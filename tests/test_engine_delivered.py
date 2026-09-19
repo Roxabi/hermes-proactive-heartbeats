@@ -111,6 +111,7 @@ class HeartbeatDeliveredTests(IsolatedHomeTestCase):
             {
                 "broken:old": {"at": "2026-09-17T11:00:00Z", "action": "notify"},
                 "broken:ancient": {"at": "2026-09-16T11:00:00Z", "action": "notify"},
+                "healthy:gone": {"at": "2026-09-17T11:00:00Z", "action": "notify"},
             },
         )
 
@@ -132,7 +133,10 @@ class HeartbeatDeliveredTests(IsolatedHomeTestCase):
 
         self.assertEqual(
             result.state["delivered"],
-            {"retired:cve:repo:pkg": {"at": "2026-09-17T11:00:00Z", "action": "notify"}},
+            {
+                "retired:cve:repo:pkg": {"at": "2026-09-17T11:00:00Z", "action": "notify"},
+                "host:disk:old": {"at": "2026-09-17T11:00:00Z", "action": "notify"},
+            },
         )
 
     def test_a_fingerprint_containing_a_colon_is_matched_to_its_own_collector(self) -> None:
@@ -159,5 +163,8 @@ class HeartbeatDeliveredTests(IsolatedHomeTestCase):
 
         self.assertEqual(
             result.state["delivered"],
-            {"alpha:cve:repo:pkg": {"at": "2026-09-17T12:00:00Z", "action": "notify"}},
+            {
+                "alpha:cve:repo:pkg": {"at": "2026-09-17T12:00:00Z", "action": "notify"},
+                "beta:cve:repo:pkg": {"at": "2026-09-17T12:00:00Z", "action": "notify"},
+            },
         )

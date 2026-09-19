@@ -4,6 +4,25 @@ All notable changes to this plugin are documented here. Versions follow
 [semantic versioning](https://semver.org/spec/v2.0.0.html); releases are tagged
 `proactive-heartbeats/vX.Y.Z`.
 
+## 0.3.1 — 2026-09-19
+
+### Fixed
+
+- Cooldown now survives a fingerprint leaving `active`. `is_due` reads
+  `delivered` even when the fingerprint is new to this tick's active set.
+  `retained_delivered` keeps inactive records until their cooldown elapses,
+  then drops them so content-addressed keys still cannot grow forever.
+  0.2.1 treated a reappearance as a brand-new event; a care signal that
+  flickered off for one tick then came back would wake immediately.
+
+### Tests
+
+- A fingerprint that is delivered, vanishes, and returns inside the default
+  cooldown stays silent. The same return after the cooldown is due again.
+  Inactive records still inside cooldown are kept on failed, unloaded, and
+  colon-keyed collectors; expired vanished records are still pruned.
+
+
 ## 0.3.0 — 2026-09-18
 
 ### Changed

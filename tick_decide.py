@@ -27,7 +27,6 @@ def is_due(
     *,
     use_case_id: str,
     signal: Signal,
-    previous_active: set[str],
     delivered: Mapping[str, Any],
     pending: Mapping[str, Any],
     now: datetime,
@@ -37,12 +36,10 @@ def is_due(
     key = delivery_key(use_case_id, fingerprint)
     if key in pending:
         return True
-    if fingerprint not in previous_active:
-        return True
 
     record = delivered.get(key)
     if not isinstance(record, Mapping):
-        # Active but never delivered: stay eligible instead of silently suppressing forever.
+        # First appearance, or reappearance after the record was pruned.
         return True
     delivered_at = parse_time(record.get("at"))
     if delivered_at is None:
