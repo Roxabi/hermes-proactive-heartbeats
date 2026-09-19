@@ -6,10 +6,7 @@ from collections.abc import Mapping
 from datetime import datetime
 from typing import Any
 
-try:
-    from . import _bootstrap  # noqa: F401
-except ImportError:  # flat plugin-dir / unittest load
-    import _bootstrap  # noqa: F401
+import _bootstrap  # noqa: F401
 from models import JsonObject
 from tick_facts import parse_time
 
@@ -99,7 +96,8 @@ def _record_cooling(
         cooldown_seconds = max(0, int(raw))
     except (TypeError, ValueError):
         cooldown_seconds = default_cooldown
-    return (now - delivered_at).total_seconds() < cooldown_seconds
+    elapsed: float = (now - delivered_at).total_seconds()
+    return elapsed < cooldown_seconds
 
 
 def retained_delivered(

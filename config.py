@@ -22,10 +22,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-try:
-    from . import _bootstrap  # noqa: F401
-except ImportError:  # flat plugin-dir / unittest load
-    import _bootstrap  # noqa: F401
+import _bootstrap  # noqa: F401
 
 JsonObject = dict[str, Any]
 

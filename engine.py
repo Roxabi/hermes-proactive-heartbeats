@@ -7,10 +7,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-try:
-    from . import _bootstrap  # noqa: F401
-except ImportError:  # flat plugin-dir / unittest load
-    import _bootstrap  # noqa: F401
+import _bootstrap  # noqa: F401
 from models import Candidate, HeartbeatUseCase, JsonObject, TickContext
 from tick_collect import CollectPass, collect_use_cases, stamp_baseline
 from tick_decide import evaluate_due, resolve_candidate

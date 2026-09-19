@@ -8,10 +8,7 @@ from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import Any
 
-try:
-    from . import _bootstrap  # noqa: F401
-except ImportError:  # flat plugin-dir / unittest load
-    import _bootstrap  # noqa: F401
+import _bootstrap  # noqa: F401
 from models import JsonObject
 
 _MAX_FACT_KEYS = 32

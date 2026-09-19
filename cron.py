@@ -7,10 +7,7 @@ import shutil
 import subprocess
 from typing import Any
 
-try:
-    from . import _bootstrap  # noqa: F401
-except ImportError:  # flat plugin-dir / unittest load
-    import _bootstrap  # noqa: F401
+import _bootstrap  # noqa: F401
 
 DEFAULT_PROMPT = (
     "Proactive heartbeat wake. The pre-run script stdout ends with a JSON object. "

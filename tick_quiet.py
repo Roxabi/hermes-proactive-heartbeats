@@ -12,10 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime, time
 from typing import Any
 
-try:
-    from . import _bootstrap  # noqa: F401
-except ImportError:  # flat plugin-dir / unittest load
-    import _bootstrap  # noqa: F401
+import _bootstrap  # noqa: F401
 from models import ActionSpec, JudgmentSpec, Signal
 from tick_decide import DueSignal
 from tick_state import delivery_key

@@ -7,10 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-try:
-    from . import _bootstrap  # noqa: F401
-except ImportError:  # flat plugin-dir / unittest load
-    import _bootstrap  # noqa: F401
+import _bootstrap  # noqa: F401
 from models import ActionSpec, Candidate, JsonObject, JudgmentSpec, Signal, TickContext
 from tick_facts import bound_facts, iso, parse_time
 from tick_state import delivery_key
@@ -49,7 +46,7 @@ def is_due(
     except (TypeError, ValueError):
         cooldown_seconds = default_cooldown
 
-    elapsed = (now - delivered_at).total_seconds()
+    elapsed: float = (now - delivered_at).total_seconds()
     return elapsed >= cooldown_seconds
 
 
@@ -83,9 +80,10 @@ def evaluate_due(
         },
     }
     try:
-        return client.evaluate(state, questions)
+        answers: dict[str, Any] | None = client.evaluate(state, questions)
     except Exception:  # noqa: BLE001 - treat client failures as unavailable
         return None
+    return answers
 
 
 def resolve_candidate(

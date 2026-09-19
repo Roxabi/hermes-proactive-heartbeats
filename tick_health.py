@@ -13,10 +13,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-try:
-    from . import _bootstrap  # noqa: F401
-except ImportError:  # flat plugin-dir / unittest load
-    import _bootstrap  # noqa: F401
+import _bootstrap  # noqa: F401
 from models import ActionSpec, JsonObject, Signal, TickContext
 from tick_decide import DueSignal, is_due
 from tick_facts import iso
