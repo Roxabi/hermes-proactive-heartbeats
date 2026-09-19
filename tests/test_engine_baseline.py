@@ -31,7 +31,7 @@ class HeartbeatBaselineTests(IsolatedHomeTestCase):
         self.assertEqual(
             result.state,
             {
-                "version": 2,
+                "version": 3,
                 "use_cases": {
                     "host": {"state": {"sample": 1}, "active": ["disk:root"]},
                 },
@@ -41,7 +41,6 @@ class HeartbeatBaselineTests(IsolatedHomeTestCase):
                         "action": "baseline",
                     }
                 },
-                "pending": {},
             },
         )
 

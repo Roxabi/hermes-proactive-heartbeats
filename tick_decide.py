@@ -13,7 +13,7 @@ except ImportError:  # flat plugin-dir / unittest load
     import _bootstrap  # noqa: F401
 from models import ActionSpec, Candidate, JsonObject, JudgmentSpec, Signal, TickContext
 from tick_facts import bound_facts, iso, parse_time
-from tick_state import delivery_key, pending_reusable
+from tick_state import delivery_key
 
 
 @dataclass(frozen=True)
@@ -28,15 +28,11 @@ def is_due(
     use_case_id: str,
     signal: Signal,
     delivered: Mapping[str, Any],
-    pending: Mapping[str, Any],
     now: datetime,
     default_cooldown: int,
 ) -> bool:
     fingerprint = signal.fingerprint
     key = delivery_key(use_case_id, fingerprint)
-    if key in pending:
-        return True
-
     record = delivered.get(key)
     if not isinstance(record, Mapping):
         # First appearance, or reappearance after the record was pruned.
@@ -61,23 +57,18 @@ def evaluate_due(
     client: Any,
     context: TickContext,
     due: list[DueSignal],
-    previous_pending: Mapping[str, JsonObject],
-) -> tuple[dict[str, Any] | None, set[str]]:
+) -> dict[str, Any] | None:
+    """Answers for every due semantic decision, in one batched call, or None."""
+
     questions: dict[str, dict[str, Any]] = {}
-    judge_ids: set[str] = set()
     for item in due:
         decision = item.signal.decision
         if not isinstance(decision, JudgmentSpec):
             continue
-        key = delivery_key(item.use_case_id, item.signal.fingerprint)
-        pending_record = previous_pending.get(key)
-        if pending_reusable(pending_record, item.signal.facts):
-            continue
         questions[item.question_id] = dict(decision.question)
-        judge_ids.add(item.question_id)
 
     if client is None or not questions:
-        return None, judge_ids
+        return None
 
     state = {
         "now": iso(context.now),
@@ -88,13 +79,13 @@ def evaluate_due(
                 "facts": bound_facts(item.signal.facts),
             }
             for item in due
-            if item.question_id in judge_ids
+            if item.question_id in questions
         },
     }
     try:
-        return client.evaluate(state, questions), judge_ids
+        return client.evaluate(state, questions)
     except Exception:  # noqa: BLE001 - treat client failures as unavailable
-        return None, judge_ids
+        return None
 
 
 def resolve_candidate(
@@ -103,13 +94,10 @@ def resolve_candidate(
     *,
     context: TickContext,
     threshold: float,
-    previous_pending: Mapping[str, JsonObject],
-    judge_ids: set[str],
 ) -> Candidate | None:
     decision = item.signal.decision
     facts = bound_facts(item.signal.facts)
     candidate_context = _candidate_context(context)
-    key = delivery_key(item.use_case_id, item.signal.fingerprint)
 
     if isinstance(decision, ActionSpec):
         if not decision.wake_agent:
@@ -121,26 +109,6 @@ def resolve_candidate(
             facts=facts,
             context=candidate_context,
             decision={"action": decision.name, "source": "rule"},
-        )
-
-    pending_record = previous_pending.get(key)
-    if item.question_id not in judge_ids and pending_reusable(pending_record, facts):
-        action = action_from_json(pending_record.get("action") if pending_record else None)
-        decision_meta = (
-            dict(pending_record.get("decision") or {})
-            if isinstance(pending_record, Mapping)
-            and isinstance(pending_record.get("decision"), Mapping)
-            else {}
-        )
-        if action is None or not action.wake_agent:
-            return None
-        return Candidate(
-            collector=item.use_case_id,
-            fingerprint=item.signal.fingerprint,
-            action=action,
-            facts=facts,
-            context=candidate_context,
-            decision=decision_meta or {"action": action.name, "source": "fallback"},
         )
 
     raw_answer = answers.get(item.question_id) if isinstance(answers, Mapping) else None
@@ -163,37 +131,6 @@ def resolve_candidate(
         facts=facts,
         context=candidate_context,
         decision=_decision_meta(label=label, action=action, answer=raw_answer, source=source),
-    )
-
-
-def action_from_json(value: Any) -> ActionSpec | None:
-    if not isinstance(value, Mapping):
-        return None
-    name = value.get("name")
-    wake_agent = value.get("wake_agent")
-    priority = value.get("priority")
-    instruction = value.get("instruction", "")
-    max_sentences = value.get("max_sentences", 0)
-    if not isinstance(name, str) or not name:
-        return None
-    if not isinstance(wake_agent, bool):
-        return None
-    try:
-        priority_value = int(priority)
-    except (TypeError, ValueError):
-        return None
-    if not isinstance(instruction, str):
-        instruction = str(instruction)
-    try:
-        max_sentences_value = int(max_sentences)
-    except (TypeError, ValueError):
-        max_sentences_value = 0
-    return ActionSpec(
-        name=name,
-        wake_agent=wake_agent,
-        priority=priority_value,
-        instruction=instruction,
-        max_sentences=max_sentences_value,
     )
 
 

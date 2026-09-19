@@ -4,6 +4,49 @@ All notable changes to this plugin are documented here. Versions follow
 [semantic versioning](https://semver.org/spec/v2.0.0.html); releases are tagged
 `proactive-heartbeats/vX.Y.Z`.
 
+## 0.4.0 — 2026-09-19
+
+### Changed
+
+- **A failed collector no longer silences the whole heartbeat.** A collector that
+  raises, returns the wrong type, or emits an invalid signal is isolated: it keeps
+  its previous state and delivery records while every healthy collector still
+  resolves, judges, and wakes. Before, one unreachable SSH probe could hide a disk
+  alert and an open CVE for as long as it stayed down.
+- `tick` now exits `0` when a collector failed but the tick still produced its
+  stdout gate, and reports the failing collectors on stderr. Hermes Cron reads
+  stdout; a partial tick must be allowed to speak instead of being treated as a
+  failed job.
+
+### Added
+
+- **Collector watchdog.** `state.health[{collector}]` counts consecutive ticks on
+  which a collector could not observe — a raised exception *or* an `error`
+  diagnostic, which is how a probe reports an unreachable host. After
+  `collector_watchdog.after_ticks` (default 3) the `_watchdog` pseudo-collector
+  emits `collector-down:{collector}` with the `collector_down` action, so a
+  heartbeat that has stopped watching says so instead of looking calm.
+  `collector_watchdog.repeat_after_seconds` gives the alarm its own cooldown;
+  `after_ticks: 0` disables it.
+- **Quiet hours.** `quiet_hours` = `{start, end, min_priority}` in local time,
+  settable at the root, under `defaults`, or per heartbeat. Inside the window,
+  waking observations below the floor are **deferred**, not suppressed: they are
+  never stamped in `delivered`, never judged (so they cost no model call), listed
+  in `state.quiet_deferred`, and due again as soon as the window ends.
+
+### Removed
+
+- The fail-closed `pending` queue and its state key, along with
+  `coerce_pending`, `sorted_pending`, `pending_reusable`, and `action_from_json`.
+  Per-collector isolation removed its only writer: there is nothing left to retry,
+  because a failed collector emits no signal at all.
+
+### Migration
+
+- `STATE_VERSION` is now `3`. A version-2 record is discarded, never migrated: the
+  next tick baselines again, so already-known conditions stay quiet for one
+  cooldown instead of arriving as a burst.
+
 ## 0.3.1 — 2026-09-19
 
 ### Fixed

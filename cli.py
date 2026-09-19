@@ -130,9 +130,10 @@ def cmd_tick(ctx: Any, args: argparse.Namespace) -> int:
         )
         ctx.state.set(key, result.state)
         if result.diagnostics:
+            # A blind collector is reported, never fatal: the healthy ones already
+            # resolved, and sustained blindness is escalated by the watchdog.
             failed = ", ".join(sorted(str(item) for item in result.diagnostics))
             print(f"proactive-heartbeats: collector failure: {failed}", file=sys.stderr)
-            return 1
         rendered = result.render()
         sys.stdout.write(rendered if rendered.endswith("\n") else f"{rendered}\n")
         sys.stdout.flush()

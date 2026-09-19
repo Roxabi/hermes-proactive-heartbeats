@@ -19,20 +19,19 @@ from tests.isolation import IsolatedHomeTestCase
 
 
 class HeartbeatDueTests(IsolatedHomeTestCase):
-    def test_failed_collector_fails_closed_and_queues_healthy_dues(self) -> None:
+    def test_a_failed_collector_does_not_silence_its_healthy_siblings(self) -> None:
         failing = FakeUseCase("broken", [RuntimeError("collector offline")])
         healthy = FakeUseCase(
             "healthy",
             [Snapshot(signals=(choice_signal("new", fallback_label="notify"),))],
         )
         previous = {
-            "version": 2,
+            "version": 3,
             "use_cases": {
                 "broken": {"state": {"cursor": "keep"}, "active": ["old"]},
                 "healthy": {"state": {}, "active": []},
             },
             "delivered": {},
-            "pending": {},
         }
 
         result = HeartbeatEngine(
@@ -40,17 +39,16 @@ class HeartbeatDueTests(IsolatedHomeTestCase):
             typesafe=FakeTypeSafe(None),
         ).tick(context(), previous_state=previous)
 
-        # Hard collector failures fail closed: no wake this tick; queue healthy dues.
-        self.assertIsNone(result.candidate)
-        self.assertEqual(result.render(), '{"wakeAgent": false}')
+        # One blind collector is not a reason to stop reporting what the others saw.
+        self.assertIsNotNone(result.candidate)
+        self.assertEqual(result.candidate.collector, "healthy")
         self.assertEqual(
             result.state["use_cases"]["broken"],
             {"state": {"cursor": "keep"}, "active": ["old"]},
         )
         self.assertEqual(result.state["use_cases"]["healthy"]["active"], ["new"])
-        self.assertIsInstance(result.state["pending"], dict)
-        self.assertIn("healthy:new", result.state["pending"])
         self.assertIn("broken", result.diagnostics)
+        self.assertEqual(result.state["health"]["broken"]["streak"], 1)
 
     def test_delivered_signal_stays_silent_inside_default_cooldown(self) -> None:
         signal = choice_signal("disk:root", fallback_label="notify")
@@ -118,10 +116,9 @@ class HeartbeatDueTests(IsolatedHomeTestCase):
     def test_active_signal_without_a_delivery_record_stays_eligible(self) -> None:
         signal = choice_signal("disk:root", fallback_label="notify")
         previous = {
-            "version": 2,
+            "version": 3,
             "use_cases": {"host": {"state": {}, "active": ["disk:root"]}},
             "delivered": {},
-            "pending": {},
         }
 
         result = HeartbeatEngine(

@@ -12,19 +12,19 @@ try:
 except ImportError:  # flat plugin-dir / unittest load
     import _bootstrap  # noqa: F401
 from models import Candidate, HeartbeatUseCase, JsonObject, TickContext
-from tick_collect import collect_use_cases, stamp_baseline
+from tick_collect import CollectPass, collect_use_cases, stamp_baseline
 from tick_decide import evaluate_due, resolve_candidate
 from tick_facts import iso
+from tick_health import WATCHDOG_ID, WatchdogPass, next_health, watchdog_pass
 from tick_pack import pack_wake
+from tick_quiet import QuietPass, filter_quiet
 from tick_state import (
     STATE_VERSION,
-    coerce_pending,
     coerce_previous,
     default_cooldown,
     delivery_key,
     empty_state,
     retained_delivered,
-    sorted_pending,
     threshold,
 )
 
@@ -83,77 +83,51 @@ class HeartbeatEngine:
         *,
         previous_state: Mapping[str, Any] | None = None,
     ) -> TickResult:
-        """Collect snapshots, gate due signals, optionally judge, and persist next state."""
+        """Collect snapshots, gate due signals, optionally judge, and persist next state.
+
+        A collector that fails is isolated: it contributes no signal and keeps its previous
+        state, while every healthy collector still resolves and wakes. Sustained failure is
+        itself reported, by the watchdog, instead of silently shrinking what is watched.
+        """
 
         prior = coerce_previous(previous_state if previous_state is not None else previous)
         is_baseline = prior is None
         previous_root = prior or empty_state()
-        previous_pending = coerce_pending(previous_root.get("pending"))
-        collected = collect_use_cases(
-            self.use_cases,
-            context,
-            previous_root,
-            previous_pending,
-            is_baseline,
-        )
-        delivered = dict(previous_root.get("delivered") or {})
+        previous_delivered = previous_root.get("delivered") or {}
+        collected = collect_use_cases(self.use_cases, context, previous_root, is_baseline)
+        delivered = dict(previous_delivered)
         if is_baseline:
             stamp_baseline(delivered, collected, context.now)
-        if collected.diagnostics:
-            return _fail_closed(collected, delivered, context)
-        answers, judge_ids = evaluate_due(
-            self.typesafe_client,
-            context,
-            collected.due,
-            previous_pending,
+        health = next_health(previous_root.get("health"), collected, context.now)
+        watchdog = watchdog_pass(health, context=context, delivered=previous_delivered)
+        quiet = filter_quiet(
+            [*collected.due, *watchdog.due],
+            settings=context.settings,
+            now=context.now,
         )
-        return _settle(collected, delivered, answers, judge_ids, context, previous_pending)
-
-
-def _fail_closed(collected: Any, delivered: dict[str, Any], context: TickContext) -> TickResult:
-    # Hard collector failures: fail closed — no wake, queue due signals for retry.
-    queued = dict(collected.retained_pending)
-    for item in collected.due:
-        queued[delivery_key(item.use_case_id, item.signal.fingerprint)] = {
-            "queued_at": iso(context.now),
-        }
-    return TickResult(
-        candidate=None,
-        state={
-            "version": STATE_VERSION,
-            "use_cases": collected.next_use_cases,
-            "delivered": retained_delivered(
-                delivered,
-                use_cases=collected.next_use_cases,
-                diagnostics=collected.diagnostics,
-                now=context.now,
-                default_cooldown=default_cooldown(context.settings),
-            ),
-            "pending": sorted_pending(queued),
-        },
-        diagnostics=collected.diagnostics,
-    )
+        answers = evaluate_due(self.typesafe_client, context, quiet.due)
+        return _settle(collected, watchdog, health, quiet, delivered, answers, context)
 
 
 def _settle(
-    collected: Any,
+    collected: CollectPass,
+    watchdog: WatchdogPass,
+    health: JsonObject,
+    quiet: QuietPass,
     delivered: dict[str, Any],
     answers: Mapping[str, Any] | None,
-    judge_ids: set[str],
     context: TickContext,
-    previous_pending: Mapping[str, JsonObject],
 ) -> TickResult:
+    due = quiet.due
     candidates = [
         candidate
-        for item in collected.due
+        for item in due
         for candidate in [
             resolve_candidate(
                 item,
                 answers,
                 context=context,
                 threshold=threshold(context.settings),
-                previous_pending=previous_pending,
-                judge_ids=judge_ids,
             )
         ]
         if candidate is not None
@@ -168,25 +142,29 @@ def _settle(
             "action": candidate.action.name,
         }
 
-    for item in collected.due:
+    for item in due:
         key = delivery_key(item.use_case_id, item.signal.fingerprint)
         if key in delivered_keys:
             continue
         delivered[key] = {"at": iso(context.now), "action": "silent"}
 
-    return TickResult(
-        candidate=packed,
-        state={
-            "version": STATE_VERSION,
-            "use_cases": collected.next_use_cases,
-            "delivered": retained_delivered(
-                delivered,
-                use_cases=collected.next_use_cases,
-                diagnostics=collected.diagnostics,
-                now=context.now,
-                default_cooldown=default_cooldown(context.settings),
-            ),
-            "pending": sorted_pending(collected.retained_pending),
-        },
-        diagnostics=collected.diagnostics,
-    )
+    use_cases = dict(collected.next_use_cases)
+    if watchdog.active:
+        use_cases[WATCHDOG_ID] = {"state": {}, "active": list(watchdog.active)}
+
+    state: JsonObject = {
+        "version": STATE_VERSION,
+        "use_cases": use_cases,
+        "delivered": retained_delivered(
+            delivered,
+            use_cases=use_cases,
+            diagnostics=collected.diagnostics,
+            now=context.now,
+            default_cooldown=default_cooldown(context.settings),
+        ),
+    }
+    if health:
+        state["health"] = health
+    if quiet.deferred:
+        state["quiet_deferred"] = list(quiet.deferred)
+    return TickResult(candidate=packed, state=state, diagnostics=collected.diagnostics)

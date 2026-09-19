@@ -34,13 +34,12 @@ class HeartbeatDeliveredTests(IsolatedHomeTestCase):
 
     def test_delivery_record_of_a_vanished_fingerprint_is_not_persisted(self) -> None:
         previous = {
-            "version": 2,
+            "version": 3,
             "use_cases": {"host": {"state": {}, "active": ["disk:root", "disk:old"]}},
             "delivered": {
                 "host:disk:root": {"at": "2026-09-17T12:00:00Z", "action": "notify"},
                 "host:disk:old": {"at": "2026-09-17T08:00:00Z", "action": "notify"},
             },
-            "pending": {},
         }
 
         result = HeartbeatEngine(
@@ -56,13 +55,12 @@ class HeartbeatDeliveredTests(IsolatedHomeTestCase):
     def test_cooldown_still_suppresses_a_retained_active_fingerprint(self) -> None:
         signal = rule_signal("disk:root", priority=70)
         previous = {
-            "version": 2,
+            "version": 3,
             "use_cases": {"host": {"state": {}, "active": ["disk:root"]}},
             "delivered": {
                 "host:disk:root": {"at": "2026-09-17T12:00:00Z", "action": "notify"},
                 "host:disk:gone": {"at": "2026-09-17T08:00:00Z", "action": "notify"},
             },
-            "pending": {},
         }
         engine = HeartbeatEngine(
             [FakeUseCase("host", [Snapshot(signals=(signal,)), Snapshot(signals=(signal,))])],
@@ -87,7 +85,7 @@ class HeartbeatDeliveredTests(IsolatedHomeTestCase):
         failing = FakeUseCase("broken", [RuntimeError("collector offline")])
         healthy = FakeUseCase("healthy", [Snapshot(signals=(rule_signal("new"),))])
         previous = {
-            "version": 2,
+            "version": 3,
             "use_cases": {
                 "broken": {"state": {}, "active": ["old"]},
                 "healthy": {"state": {}, "active": ["healthy:gone"]},
@@ -97,7 +95,6 @@ class HeartbeatDeliveredTests(IsolatedHomeTestCase):
                 "broken:ancient": {"at": "2026-09-16T11:00:00Z", "action": "notify"},
                 "healthy:gone": {"at": "2026-09-17T11:00:00Z", "action": "notify"},
             },
-            "pending": {},
         }
 
         result = HeartbeatEngine(
@@ -112,18 +109,19 @@ class HeartbeatDeliveredTests(IsolatedHomeTestCase):
                 "broken:old": {"at": "2026-09-17T11:00:00Z", "action": "notify"},
                 "broken:ancient": {"at": "2026-09-16T11:00:00Z", "action": "notify"},
                 "healthy:gone": {"at": "2026-09-17T11:00:00Z", "action": "notify"},
+                # The healthy collector still resolved and was stamped this tick.
+                "healthy:new": {"at": "2026-09-17T12:00:00Z", "action": "notify"},
             },
         )
 
     def test_records_of_a_collector_not_loaded_this_tick_survive(self) -> None:
         previous = {
-            "version": 2,
+            "version": 3,
             "use_cases": {"host": {"state": {}, "active": []}},
             "delivered": {
                 "retired:cve:repo:pkg": {"at": "2026-09-17T11:00:00Z", "action": "notify"},
                 "host:disk:old": {"at": "2026-09-17T11:00:00Z", "action": "notify"},
             },
-            "pending": {},
         }
 
         result = HeartbeatEngine(
@@ -143,7 +141,7 @@ class HeartbeatDeliveredTests(IsolatedHomeTestCase):
         alpha = FakeUseCase("alpha", [Snapshot(signals=(rule_signal("cve:repo:pkg"),))])
         beta = FakeUseCase("beta", [Snapshot()])
         previous = {
-            "version": 2,
+            "version": 3,
             "use_cases": {
                 "alpha": {"state": {}, "active": ["cve:repo:pkg"]},
                 "beta": {"state": {}, "active": ["cve:repo:pkg"]},
@@ -153,7 +151,6 @@ class HeartbeatDeliveredTests(IsolatedHomeTestCase):
                 "alpha:cve:repo:old": {"at": "2026-09-17T08:00:00Z", "action": "notify"},
                 "beta:cve:repo:pkg": {"at": "2026-09-17T12:00:00Z", "action": "notify"},
             },
-            "pending": {},
         }
 
         result = HeartbeatEngine([alpha, beta], typesafe=FakeTypeSafe({})).tick(
