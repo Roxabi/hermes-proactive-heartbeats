@@ -11,9 +11,11 @@ try:
 except ImportError:  # flat plugin-dir / unittest load
     import _bootstrap  # noqa: F401
 from models import JsonObject
-from tick_facts import facts_digest, parse_time
+from tick_facts import parse_time
 
-STATE_VERSION = 2
+#: 3 dropped the fail-closed `pending` queue and added `health`. A record of another
+#: version is discarded, never migrated: one quiet tick, then the gates re-baseline.
+STATE_VERSION = 3
 
 
 def coerce_previous(previous: Mapping[str, Any] | None) -> JsonObject | None:
@@ -33,7 +35,7 @@ def coerce_previous(previous: Mapping[str, Any] | None) -> JsonObject | None:
 
 
 def empty_state() -> JsonObject:
-    return {"version": STATE_VERSION, "use_cases": {}, "delivered": {}, "pending": {}}
+    return {"version": STATE_VERSION, "use_cases": {}, "delivered": {}}
 
 
 def use_case_entry(state: Mapping[str, Any], use_case_id: str) -> JsonObject:
@@ -134,29 +136,3 @@ def retained_delivered(
         ):
             retained[key] = record
     return retained
-
-
-def coerce_pending(value: Any) -> dict[str, JsonObject]:
-    if not isinstance(value, Mapping):
-        return {}
-    pending: dict[str, JsonObject] = {}
-    for key, record in value.items():
-        if not isinstance(key, str) or not isinstance(record, Mapping):
-            continue
-        pending[key] = dict(record)
-    return pending
-
-
-def sorted_pending(pending: Mapping[str, JsonObject]) -> JsonObject:
-    return {key: dict(pending[key]) for key in sorted(pending)}
-
-
-def pending_reusable(record: Mapping[str, Any] | None, facts: Mapping[str, Any]) -> bool:
-    if not isinstance(record, Mapping):
-        return False
-    if not isinstance(record.get("action"), Mapping):
-        return False
-    if not isinstance(record.get("decision"), Mapping):
-        return False
-    digest = record.get("facts_digest")
-    return isinstance(digest, str) and digest == facts_digest(facts)

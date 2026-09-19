@@ -77,7 +77,6 @@ class HeartbeatTypeSafeTests(IsolatedHomeTestCase):
         self.assertEqual(result.candidate.action.name, "bundle")
         self.assertEqual(result.candidate.action.priority, 80)
         self.assertEqual(observation_ids(result), [("beta", "high"), ("alpha", "low")])
-        self.assertEqual(result.state["pending"], {})
         self.assertIn("beta:high", result.state["delivered"])
         self.assertIn("alpha:low", result.state["delivered"])
 
@@ -116,7 +115,6 @@ class HeartbeatTypeSafeTests(IsolatedHomeTestCase):
             observation_ids(result),
             [("alpha", "rule"), ("beta", "semantic")],
         )
-        self.assertEqual(result.state["pending"], {})
         self.assertEqual(result.state["delivered"]["alpha:rule"]["action"], "notify")
         self.assertEqual(result.state["delivered"]["beta:semantic"]["action"], "notify")
 
@@ -146,9 +144,7 @@ class HeartbeatTypeSafeTests(IsolatedHomeTestCase):
 
         assert first.candidate is not None
         self.assertEqual(observation_ids(first), [("beta", "high"), ("alpha", "low")])
-        self.assertEqual(first.state["pending"], {})
         self.assertIsNone(second.candidate)
-        self.assertEqual(second.state["pending"], {})
         self.assertEqual(len(typesafe.calls), 1)
 
     def test_packed_wake_does_not_reopen_a_delivered_observation_when_a_sibling_drops(self) -> None:
@@ -181,7 +177,7 @@ class HeartbeatTypeSafeTests(IsolatedHomeTestCase):
         self.assertIsNone(second.candidate)
         self.assertEqual(len(typesafe.calls), 1)
 
-    def test_delivered_observations_are_not_queued_as_pending(self) -> None:
+    def test_a_delivered_observation_is_not_rejudged_inside_its_cooldown(self) -> None:
         low = choice_signal("low", priority=20)
         high = choice_signal("high", priority=80)
         low_use_case = FakeUseCase(
@@ -205,7 +201,7 @@ class HeartbeatTypeSafeTests(IsolatedHomeTestCase):
         first = engine.tick(context(), previous_state=baseline.state)
         second = engine.tick(context(), previous_state=first.state)
 
-        self.assertEqual(first.state["pending"], {})
-        self.assertNotIn("alpha:low", first.state["pending"])
-        self.assertNotIn("alpha:low", second.state["pending"])
+        self.assertIsNotNone(first.candidate)
+        self.assertIsNone(second.candidate)
+        # One batch total: the second tick's still-active signal is inside its cooldown.
         self.assertEqual(len(typesafe.calls), 1)

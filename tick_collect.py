@@ -32,7 +32,6 @@ class CollectPass:
     diagnostics: JsonObject
     next_use_cases: dict[str, JsonObject]
     due: list[DueSignal]
-    retained_pending: dict[str, JsonObject]
     signal_index: dict[str, Signal]
 
 
@@ -40,13 +39,11 @@ def collect_use_cases(
     use_cases: Iterable[HeartbeatUseCase],
     context: TickContext,
     previous_root: Mapping[str, Any],
-    previous_pending: Mapping[str, JsonObject],
     is_baseline: bool,
 ) -> CollectPass:
     diagnostics: JsonObject = {}
     next_use_cases: dict[str, JsonObject] = {}
     due: list[DueSignal] = []
-    retained_pending: dict[str, JsonObject] = {}
     signal_index: dict[str, Signal] = {}
 
     for use_case in use_cases:
@@ -64,10 +61,8 @@ def collect_use_cases(
             _retain_failed(
                 use_case.id,
                 previous_entry,
-                previous_pending,
                 diagnostics,
                 next_use_cases,
-                retained_pending,
                 error=exc.__class__.__name__,
                 message=str(exc),
             )
@@ -77,10 +72,8 @@ def collect_use_cases(
             _retain_failed(
                 use_case.id,
                 previous_entry,
-                previous_pending,
                 diagnostics,
                 next_use_cases,
-                retained_pending,
                 error="TypeError",
                 message="collect() must return Snapshot",
             )
@@ -91,10 +84,8 @@ def collect_use_cases(
             _retain_failed(
                 use_case.id,
                 previous_entry,
-                previous_pending,
                 diagnostics,
                 next_use_cases,
-                retained_pending,
                 error="TypeError",
                 message=invalid,
             )
@@ -121,7 +112,6 @@ def collect_use_cases(
                 delivered=previous_root.get("delivered") or {},
                 now=context.now,
                 default_cooldown=default_cooldown(context.settings),
-                pending=previous_pending,
             ):
                 continue
             due.append(
@@ -136,7 +126,6 @@ def collect_use_cases(
         diagnostics=diagnostics,
         next_use_cases=next_use_cases,
         due=due,
-        retained_pending=retained_pending,
         signal_index=signal_index,
     )
 
@@ -187,14 +176,14 @@ def first_invalid_signal(signals: tuple[Signal, ...]) -> str | None:
 def _retain_failed(
     use_case_id: str,
     previous_entry: Mapping[str, Any],
-    previous_pending: Mapping[str, JsonObject],
     diagnostics: JsonObject,
     next_use_cases: dict[str, JsonObject],
-    retained_pending: dict[str, JsonObject],
     *,
     error: str,
     message: str,
 ) -> None:
+    """Isolate one failed collector: keep its last state, let the others resolve."""
+
     diagnostics[use_case_id] = {"error": error, "message": message}
     next_use_cases[use_case_id] = {
         "state": dict(previous_entry.get("state") or {}),
@@ -202,10 +191,3 @@ def _retain_failed(
     }
     if isinstance(previous_entry.get("diagnostics"), dict):
         next_use_cases[use_case_id]["diagnostics"] = dict(previous_entry["diagnostics"])
-    retained_pending.update(
-        {
-            key: dict(record)
-            for key, record in previous_pending.items()
-            if key.startswith(f"{use_case_id}:")
-        }
-    )

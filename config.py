@@ -42,6 +42,9 @@ ROOT_SETTING_DEFAULTS: JsonObject = {
     "default_cooldown_seconds": 14400,
 }
 
+#: Mapping-shaped settings merged root → `defaults.<key>` → heartbeat file, key by key.
+SECTION_SETTINGS: tuple[str, ...] = ("quiet_hours", "collector_watchdog")
+
 DELIVERY_DEFAULTS: JsonObject = {
     "schedule": "every 15m",
     "target": "local",
@@ -154,6 +157,9 @@ def load_root(home: Path, *, config_dir: str | None = None) -> JsonObject:
     root["defaults"] = dict(defaults) if isinstance(defaults, Mapping) else {}
     context = loaded.get("context")
     root["context"] = dict(context) if isinstance(context, Mapping) else {}
+    for key in SECTION_SETTINGS:
+        section = loaded.get(key)
+        root[key] = dict(section) if isinstance(section, Mapping) else {}
     return root
 
 
@@ -197,6 +203,16 @@ def _merge_context(root: Mapping[str, Any], file_context: Any) -> JsonObject:
     return merged
 
 
+def _merge_section(root: Mapping[str, Any], file_section: Any, key: str) -> JsonObject:
+    defaults = root.get("defaults")
+    nested = defaults.get(key) if isinstance(defaults, Mapping) else None
+    merged: JsonObject = {}
+    for source in (root.get(key), nested, file_section):
+        if isinstance(source, Mapping):
+            merged.update({k: v for k, v in source.items() if v is not None})
+    return merged
+
+
 def load_heartbeat(
     home: Path,
     name: str,
@@ -220,4 +236,6 @@ def load_heartbeat(
     settings["delivery"] = _merge_delivery(resolved_root, loaded.get("delivery"))
     settings["collectors"] = dict(collectors) if isinstance(collectors, Mapping) else {}
     settings["context"] = _merge_context(resolved_root, loaded.get("context"))
+    for key in SECTION_SETTINGS:
+        settings[key] = _merge_section(resolved_root, loaded.get(key), key)
     return settings

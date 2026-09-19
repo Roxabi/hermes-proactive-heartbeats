@@ -113,12 +113,13 @@ def question_items(questions: Any) -> list[tuple[str, dict[str, Any]]]:
     return list(questions.items())
 
 
-def context(*, now: datetime = NOW) -> TickContext:
+def context(*, now: datetime = NOW, **settings: Any) -> TickContext:
     return TickContext(
         now=now,
         settings={
             "typesafe_threshold": 0.65,
             "default_cooldown_seconds": 14_400,
+            **settings,
         },
     )
 

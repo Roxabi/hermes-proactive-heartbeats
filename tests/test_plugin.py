@@ -148,16 +148,14 @@ class PluginTickHandlerTests(IsolatedHomeTestCase):
             self.skipTest("plugin register() is not importable without a Hermes install")
 
         previous_state = {
-            "version": 2,
+            "version": 3,
             "use_cases": {},
             "delivered": {},
-            "pending": {},
         }
         next_state = {
-            "version": 2,
+            "version": 3,
             "use_cases": {"host": {"state": {}, "active": []}},
             "delivered": {},
-            "pending": {},
         }
         rendered = '{"wakeAgent": false}'
         tick_result = SimpleNamespace(state=next_state, diagnostics={}, render=lambda: rendered)
@@ -203,3 +201,43 @@ class PluginTickHandlerTests(IsolatedHomeTestCase):
         self.assertIn(("heartbeat:care", None), ctx.state.gets)
         self.assertEqual(ctx.state.sets, [("heartbeat:care", next_state)])
         self.assertEqual(stdout.getvalue(), rendered + "\n")
+
+    def test_a_collector_failure_reports_on_stderr_but_still_delivers_the_wake(self) -> None:
+        register = load_register()
+        if register is None:
+            self.skipTest("plugin register() is not importable without a Hermes install")
+
+        rendered = '{"heartbeat_candidate":{"collector":"host"}}'
+        tick_result = SimpleNamespace(
+            state={"version": 3, "use_cases": {}, "delivered": {}},
+            diagnostics={"probe": {"error": "RuntimeError", "message": "ssh failed"}},
+            render=lambda: rendered,
+        )
+        engine = SimpleNamespace(tick=mock.Mock(return_value=tick_result))
+
+        root = self.hermes_home / "proactive-heartbeats"
+        (root / "heartbeats").mkdir(parents=True)
+        (root / "proactive-heartbeats.json").write_text("{}", encoding="utf-8")
+        (root / "heartbeats" / "care.json").write_text(
+            '{"delivery": {"target": "local"}, "collectors": {}}', encoding="utf-8"
+        )
+
+        ctx = FakeCtx()
+        register(ctx)
+        handler = ctx.commands[0]["handler_fn"]
+        args = SimpleNamespace(proactive_heartbeats_command="tick", name="care")
+        stdout, stderr = io.StringIO(), io.StringIO()
+        cli_module = sys.modules[f"{PACKAGE_NAME}.cli"]
+        tick_deps = (mock.Mock(return_value=engine), mock.Mock(return_value=[]), mock.Mock())
+
+        with (
+            mock.patch.object(cli_module, "_import_tick_deps", return_value=tick_deps),
+            mock.patch.object(sys, "stdout", stdout),
+            mock.patch.object(sys, "stderr", stderr),
+        ):
+            exit_code = handler(args)
+
+        # Cron reads stdout for the gate: a partial tick must still be allowed to speak.
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stdout.getvalue(), rendered + "\n")
+        self.assertIn("probe", stderr.getvalue())
