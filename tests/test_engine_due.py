@@ -133,6 +133,71 @@ class HeartbeatDueTests(IsolatedHomeTestCase):
         assert result.candidate is not None
         self.assertEqual(result.candidate.fingerprint, "disk:root")
 
+    def test_cooldown_survives_a_fingerprint_leaving_and_returning(self) -> None:
+        signal = rule_signal("care:pause", priority=70)
+        engine = HeartbeatEngine(
+            [
+                FakeUseCase(
+                    "sense",
+                    [
+                        Snapshot(),
+                        Snapshot(signals=(signal,)),
+                        Snapshot(),
+                        Snapshot(signals=(signal,)),
+                    ],
+                )
+            ],
+            typesafe=FakeTypeSafe({}),
+        )
+        baseline = engine.tick(context(), previous_state=None)
+        woken = engine.tick(context(), previous_state=baseline.state)
+        quiet = engine.tick(
+            context(now=NOW + timedelta(seconds=60)),
+            previous_state=woken.state,
+        )
+        returned = engine.tick(
+            context(now=NOW + timedelta(seconds=120)),
+            previous_state=quiet.state,
+        )
+
+        self.assertIsNotNone(woken.candidate)
+        self.assertIsNone(quiet.candidate)
+        self.assertIsNone(returned.candidate)
+        self.assertEqual(returned.render(), '{"wakeAgent": false}')
+        self.assertIn("sense:care:pause", returned.state["delivered"])
+
+    def test_vanished_fingerprint_is_due_again_after_cooldown(self) -> None:
+        signal = rule_signal("care:pause", priority=70)
+        engine = HeartbeatEngine(
+            [
+                FakeUseCase(
+                    "sense",
+                    [
+                        Snapshot(),
+                        Snapshot(signals=(signal,)),
+                        Snapshot(),
+                        Snapshot(signals=(signal,)),
+                    ],
+                )
+            ],
+            typesafe=FakeTypeSafe({}),
+        )
+        baseline = engine.tick(context(), previous_state=None)
+        woken = engine.tick(context(), previous_state=baseline.state)
+        quiet = engine.tick(
+            context(now=NOW + timedelta(seconds=60)),
+            previous_state=woken.state,
+        )
+
+        returned = engine.tick(
+            context(now=NOW + timedelta(seconds=14_400)),
+            previous_state=quiet.state,
+        )
+
+        self.assertIsNotNone(returned.candidate)
+        assert returned.candidate is not None
+        self.assertEqual(returned.candidate.fingerprint, "care:pause")
+
     def test_per_signal_repeat_after_gates_reeligibility(self) -> None:
         signal = choice_signal("disk:root", fallback_label="notify", repeat_after_seconds=60)
         snapshot = Snapshot(signals=(signal,), state={"sample": 1})

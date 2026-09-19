@@ -110,9 +110,6 @@ def collect_use_cases(
             next_entry["diagnostics"] = bound_facts(snapshot.diagnostics)
         next_use_cases[use_case.id] = next_entry
 
-        previous_active = {
-            str(item) for item in (previous_entry.get("active") or []) if item is not None
-        }
         for signal in snapshot.signals:
             key = delivery_key(use_case.id, signal.fingerprint)
             signal_index[key] = signal
@@ -121,7 +118,6 @@ def collect_use_cases(
             if (not is_baseline) and not is_due(
                 use_case_id=use_case.id,
                 signal=signal,
-                previous_active=previous_active,
                 delivered=previous_root.get("delivered") or {},
                 now=context.now,
                 default_cooldown=default_cooldown(context.settings),

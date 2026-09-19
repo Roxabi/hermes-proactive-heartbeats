@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime
 from typing import Any
 
 try:
@@ -10,7 +11,7 @@ try:
 except ImportError:  # flat plugin-dir / unittest load
     import _bootstrap  # noqa: F401
 from models import JsonObject
-from tick_facts import facts_digest
+from tick_facts import facts_digest, parse_time
 
 STATE_VERSION = 2
 
@@ -82,17 +83,36 @@ def delivered_view(delivered: Any, use_case_id: str) -> JsonObject:
     }
 
 
+def _record_cooling(
+    record: Mapping[str, Any],
+    *,
+    now: datetime,
+    default_cooldown: int,
+) -> bool:
+    delivered_at = parse_time(record.get("at"))
+    if delivered_at is None:
+        return True
+    raw = record.get("repeat_after_seconds", default_cooldown)
+    try:
+        cooldown_seconds = max(0, int(raw))
+    except (TypeError, ValueError):
+        cooldown_seconds = default_cooldown
+    return (now - delivered_at).total_seconds() < cooldown_seconds
+
+
 def retained_delivered(
     delivered: Mapping[str, Any],
     *,
     use_cases: Mapping[str, Any],
     diagnostics: Mapping[str, Any],
+    now: datetime,
+    default_cooldown: int,
 ) -> JsonObject:
-    """Keep active fingerprints; retain failed/unloaded collectors untouched.
+    """Keep records that can still suppress a later due check.
 
-    Dropping an inactive fingerprint cannot change due-ness: ``is_due`` already
-    returns True when the fingerprint is absent from the previous active set,
-    before it consults ``delivered``.
+    Active fingerprints stay. Inactive ones stay until cooldown elapses,
+    then drop so content-addressed keys cannot grow forever. Failed or
+    unloaded collectors stay untouched.
     """
 
     retained: JsonObject = {}
@@ -107,6 +127,11 @@ def retained_delivered(
             continue
         active = entry.get("active")
         if isinstance(active, list) and fingerprint in active:
+            retained[key] = record
+            continue
+        if isinstance(record, Mapping) and _record_cooling(
+            record, now=now, default_cooldown=default_cooldown
+        ):
             retained[key] = record
     return retained
 
