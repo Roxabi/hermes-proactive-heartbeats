@@ -76,7 +76,8 @@ These names are the contract: they are identical in the code, the JSON keys, the
 | **Cooldown** | `repeat_after_seconds` per signal, or root `default_cooldown_seconds` (4 h): how long a fingerprint stays quiet after a delivery or a baseline stamp. `repeat_after_seconds: 0` means "due on every tick while active". |
 | **Collector health** | `state.health[{collector}]` = `{streak, since, error}`: consecutive ticks on which a collector could not observe, whether it raised or reported an `error` diagnostic. One clean tick clears it. |
 | **Watchdog** | The `_watchdog` pseudo-collector. Once a collector's health streak reaches `collector_watchdog.after_ticks` (default 3), it emits `collector-down:{collector}` with the `collector_down` action, so blindness is reported instead of being mistaken for silence. A leading underscore cannot be a collector id, so the namespace cannot collide. |
-| **Quiet hours** | `quiet_hours` = `{start, end, min_priority}` in local time. Inside the window, every waking observation below `min_priority` (absent = all of them) is **deferred**, never stamped: it is not judged, costs no model call, and speaks as soon as the window ends. |
+| **Quiet hours** | `quiet_hours` = `{start, end, min_priority}` in local time. Inside the window, every waking observation below `min_priority` (absent = all of them) is held: it is not judged and costs no model call. |
+| **Perishable** | `Signal(perishable=True)`: an observation whose value expires with the moment. Quiet hours **drop** it (stamped `quiet`, so its cooldown runs) instead of deferring it — "it is late" must not be read out at 07:30. Everything else is **deferred**: not stamped, and due again the moment the window ends. |
 | **Delivery record view** | `context.delivered`: what the engine really announced for **the collector being invoked**, keyed by that collector's own fingerprints with no `{collector}:` prefix, each holding `{"at": "<iso8601>", "action": "<action name>"}` as persisted before this tick. Action `baseline` means the fingerprint was only baselined, `silent` that it was due but did not wake the agent — neither is an announcement to the user; any other name is the action that woke it. A collector never sees a sibling collector's fingerprints, and the first tick sees `{}`. A record stays while the fingerprint is active **or** still inside its cooldown, so leaving `active` cannot reset the clock. After the cooldown elapses, an inactive record is dropped (content-addressed daily keys must not grow forever). Memory that must outlive cooldown belongs in `Snapshot.state`. Retention is fail-closed: a collector that failed this tick, or a key that names no collector this heartbeat loaded, keeps every one of its records. |
 
 The cardinality is: **one plugin → many heartbeats → many collectors → many signals → one packed wake per tick**. Collector code is reusable, while delivery, context, deduplication, and state stay isolated per heartbeat.
@@ -237,7 +238,7 @@ Save this heartbeat as `$HERMES_HOME/proactive-heartbeats/heartbeats/care.json`.
 }
 ```
 
-**Quiet hours:** `quiet_hours` is read in the host's local time and may be set at the root, under `defaults`, or per heartbeat (the heartbeat wins, key by key). `start`/`end` are `"HH:MM"` and may cross midnight; `min_priority` is the floor that still gets through, and omitting it silences the whole window. Held-back observations are listed in `state.quiet_deferred` for that tick and are due again the moment the window ends — a deferral never starts a cooldown.
+**Quiet hours:** `quiet_hours` is read in the host's local time and may be set at the root, under `defaults`, or per heartbeat (the heartbeat wins, key by key). `start`/`end` are `"HH:MM"` and may cross midnight; `min_priority` is the floor that still gets through, and omitting it silences the whole window. Held-back observations are listed in `state.quiet_deferred` and are due again the moment the window ends — a deferral never starts a cooldown. A `perishable` signal is listed in `state.quiet_dropped` instead: it is stamped `quiet` and forgotten, because saying it after the window is worse than not saying it.
 
 **Collector watchdog:** `collector_watchdog.after_ticks` (default 3, `0` disables) is how many consecutive blind ticks a collector gets before the plugin says so; `collector_watchdog.repeat_after_seconds` gives that alarm its own cooldown, defaulting to `default_cooldown_seconds`.
 
@@ -251,7 +252,7 @@ Collectors are **not** shipped in this plugin. Each id in `collectors` loads `$H
 
 ### 4. Implement the collector
 
-`ActionSpec` requires `name`, an explicit `wake_agent` boolean, and `priority`; `instruction` defaults to `""` and `max_sentences` to `0`. Use the SDK's canonical `SILENT` action rather than defining another non-waking action.
+`ActionSpec` requires `name`, an explicit `wake_agent` boolean, and `priority`; `instruction` defaults to `""` and `max_sentences` to `0`. A `Signal` whose meaning expires with the moment sets `perishable=True` so quiet hours drop it rather than replay it later. Use the SDK's canonical `SILENT` action rather than defining another non-waking action.
 
 `$HERMES_HOME/proactive-heartbeats/collectors/probe.py`:
 

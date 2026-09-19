@@ -4,6 +4,16 @@ All notable changes to this plugin are documented here. Versions follow
 [semantic versioning](https://semver.org/spec/v2.0.0.html); releases are tagged
 `proactive-heartbeats/vX.Y.Z`.
 
+## 0.5.0 — 2026-09-19
+
+### Added
+
+- `Signal(perishable=True)` for observations whose value expires with the
+  moment. Quiet hours **drop** a perishable signal — stamped `quiet` so its
+  cooldown runs, and listed in `state.quiet_dropped` — instead of deferring it.
+  Without it, a "it is late" nudge held at 02:30 was read out at 07:30, which is
+  both wrong and the opposite of what quiet hours are for.
+
 ## 0.4.0 — 2026-09-19
 
 ### Changed

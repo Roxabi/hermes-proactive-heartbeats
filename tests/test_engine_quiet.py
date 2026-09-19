@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
 from engine import HeartbeatEngine
@@ -121,3 +122,30 @@ class QuietHoursTests(IsolatedHomeTestCase):
             quiet={"start": "13:00", "end": "14:00"},
         )
         self.assertIsNotNone(outside.candidate)
+
+    def test_a_perishable_signal_is_dropped_rather_than_said_in_the_morning(self) -> None:
+        late = rule_signal("care:late", priority=60, initial_observation="eligible")
+        late = replace(late, perishable=True)
+
+        night = tick([late], now=local(2, 30))
+        self.assertIsNone(night.candidate)
+        self.assertEqual(night.state["quiet_dropped"], ["host:care:late"])
+        self.assertNotIn("quiet_deferred", night.state)
+        # Stamped: the decision was "not worth saying", so the cooldown runs.
+        self.assertEqual(night.state["delivered"]["host:care:late"]["action"], "quiet")
+
+        # The stamp is a real decision: the same condition stays quiet for its cooldown.
+        still_night = tick([late], now=local(4, 0), previous=night.state)
+        self.assertIsNone(still_night.candidate)
+        self.assertNotIn("quiet_dropped", still_night.state)
+
+    def test_a_perishable_signal_still_wakes_outside_the_window(self) -> None:
+        late = replace(
+            rule_signal("care:late", priority=60, initial_observation="eligible"),
+            perishable=True,
+        )
+
+        result = tick([late], now=local(22, 15))
+
+        self.assertIsNotNone(result.candidate)
+        self.assertEqual(result.candidate.fingerprint, "care:late")
