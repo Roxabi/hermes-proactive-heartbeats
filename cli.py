@@ -11,12 +11,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-try:
-    from . import _bootstrap  # noqa: F401
-except ImportError:  # flat plugin-dir / unittest load
-    import _bootstrap  # noqa: F401
-
-from .models import TickContext
+import _bootstrap  # noqa: F401
+from models import TickContext
 
 PLUGIN_NAME = "proactive-heartbeats"
 
@@ -56,30 +52,22 @@ def handle(ctx: Any, args: argparse.Namespace) -> int:
 
 
 def _config_mod() -> Any:
-    try:
-        from . import config as config_mod
-    except ImportError:  # pragma: no cover
-        import config as config_mod
+    import config as config_mod
+
     return config_mod
 
 
 def _setup_mod() -> Any:
-    try:
-        from . import setup as setup_mod
-    except ImportError:  # pragma: no cover
-        import setup as setup_mod
+    import setup as setup_mod
+
     return setup_mod
 
 
 def _import_tick_deps() -> tuple[Any, Any, Any]:
-    try:
-        from .engine import HeartbeatEngine
-        from .registry import build_registry
-        from .typesafe import TypeSafeClient
-    except ImportError:  # pragma: no cover - flat sys.path plugin load
-        from engine import HeartbeatEngine
-        from registry import build_registry
-        from typesafe import TypeSafeClient
+    from engine import HeartbeatEngine
+    from registry import build_registry
+    from typesafe import TypeSafeClient
+
     return HeartbeatEngine, build_registry, TypeSafeClient
 
 
@@ -87,12 +75,14 @@ def config_dir_setting(ctx: Any) -> str | None:
     config_mod = _config_mod()
     raw = ctx.get_config(config_mod.CONFIG_DIR_KEY, default=config_mod.PLUGIN_DIRNAME)
     if not isinstance(raw, str) or not raw.strip():
-        return config_mod.PLUGIN_DIRNAME
+        fallback: str = config_mod.PLUGIN_DIRNAME
+        return fallback
     return raw.strip()
 
 
 def resolve_home() -> Path:
-    return _setup_mod().resolve_hermes_home()
+    home: Path = _setup_mod().resolve_hermes_home()
+    return home
 
 
 def cmd_tick(ctx: Any, args: argparse.Namespace) -> int:

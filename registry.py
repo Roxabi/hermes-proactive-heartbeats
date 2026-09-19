@@ -11,10 +11,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
-try:
-    from . import _bootstrap  # noqa: F401
-except ImportError:  # flat plugin-dir / unittest load
-    import _bootstrap  # noqa: F401
+import _bootstrap  # noqa: F401
 from models import HeartbeatUseCase
 
 JsonObject = dict[str, Any]
@@ -77,7 +74,7 @@ def _collector_class(module: ModuleType, collector_id: str) -> type:
 
 
 def _instantiate(cls: type, collector_id: str, config: Mapping[str, Any]) -> HeartbeatUseCase:
-    instance = cls(config)
+    instance: HeartbeatUseCase = cls(config)
     if not getattr(instance, "id", None):
         instance.id = collector_id
     if instance.id != collector_id:

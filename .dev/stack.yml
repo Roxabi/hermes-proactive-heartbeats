@@ -28,7 +28,7 @@ docs:
 commands:
   format: ruff format .
   lint: ruff check .
-  typecheck: python3 -m compileall -q .
+  typecheck: MYPYPATH=. mypy --strict --ignore-missing-imports --explicit-package-bases $(git ls-files '*.py' | grep -v '^tests/' | grep -v '^__init__.py')
   test: python3 -m unittest discover -s tests -v
 standards:
   agent_rules: AGENTS.md

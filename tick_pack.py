@@ -4,10 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-try:
-    from . import _bootstrap  # noqa: F401
-except ImportError:  # flat plugin-dir / unittest load
-    import _bootstrap  # noqa: F401
+import _bootstrap  # noqa: F401
 from models import ActionSpec, Candidate, JsonObject, TickContext
 from tick_facts import bound_facts, iso
 

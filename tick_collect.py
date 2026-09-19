@@ -7,10 +7,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any
 
-try:
-    from . import _bootstrap  # noqa: F401
-except ImportError:  # flat plugin-dir / unittest load
-    import _bootstrap  # noqa: F401
+import _bootstrap  # noqa: F401
 from models import (
     ActionSpec,
     HeartbeatUseCase,

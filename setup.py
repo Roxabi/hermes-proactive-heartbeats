@@ -9,28 +9,21 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-try:
-    from . import _bootstrap  # noqa: F401
-except ImportError:  # flat plugin-dir / unittest load
-    import _bootstrap  # noqa: F401
+import _bootstrap  # noqa: F401
 
 _LEGACY_SHIMS = ("proactive-heartbeat.sh", "proactive-heartbeat-tick.py")
 _LEGACY_JOB = "proactive-heartbeat"
 
 
 def _config_mod() -> Any:
-    try:
-        from . import config as config_mod
-    except ImportError:  # pragma: no cover
-        import config as config_mod
+    import config as config_mod
+
     return config_mod
 
 
 def _cron_mod() -> Any:
-    try:
-        from . import cron as cron_mod
-    except ImportError:  # pragma: no cover
-        import cron as cron_mod
+    import cron as cron_mod
+
     return cron_mod
 
 
@@ -44,15 +37,18 @@ def resolve_hermes_home() -> Path:
 def shim_path(home: Path | None, name: str) -> Path:
     root = home or resolve_hermes_home()
     config_mod = _config_mod()
-    return root / "scripts" / config_mod.shim_basename(name)
+    basename: str = config_mod.shim_basename(name)
+    return root / "scripts" / basename
 
 
 def resolve_hermes_executable() -> str:
-    return _cron_mod().resolve_hermes_executable()
+    executable: str = _cron_mod().resolve_hermes_executable()
+    return executable
 
 
 def find_cron_job(job_name: str) -> dict[str, str] | None:
-    return _cron_mod().find_cron_job(job_name)
+    job: dict[str, str] | None = _cron_mod().find_cron_job(job_name)
+    return job
 
 
 def _shim_source(name: str) -> str:

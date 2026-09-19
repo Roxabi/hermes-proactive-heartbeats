@@ -16,4 +16,4 @@ Naming is fixed by README § *Ubiquitous language*. Reuse those terms in code, J
 
 ## Quality
 
-Run the commands declared in `.dev/stack.yml`. Tests use the standard library `unittest` runner and assert observable behavior. Lefthook is the local net: ruff on pre-commit, unittest on pre-push. CI is the authority gate. `compileall` is bytecode smoke, not a typechecker.
+Run the commands declared in `.dev/stack.yml`. Tests use the standard library `unittest` runner and assert observable behavior. Lefthook is the local net: ruff on pre-commit, unittest on pre-push. CI is the authority gate: ruff, `compileall`, **`mypy --strict`**, unittest. Modules import each other flat (`from models import ...`) because Hermes puts the checkout root on `sys.path` and `__init__.py` inserts it before importing anything — do not reintroduce `try: from . import x / except ImportError`, it makes the domain types unresolvable and the typecheck vacuous.
