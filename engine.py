@@ -148,6 +148,11 @@ def _settle(
             continue
         delivered[key] = {"at": iso(context.now), "action": "silent"}
 
+    for key in quiet.dropped:
+        # A perishable observation the window swallowed still burns its cooldown:
+        # it was decided, not postponed.
+        delivered[key] = {"at": iso(context.now), "action": "quiet"}
+
     use_cases = dict(collected.next_use_cases)
     if watchdog.active:
         use_cases[WATCHDOG_ID] = {"state": {}, "active": list(watchdog.active)}
@@ -167,4 +172,6 @@ def _settle(
         state["health"] = health
     if quiet.deferred:
         state["quiet_deferred"] = list(quiet.deferred)
+    if quiet.dropped:
+        state["quiet_dropped"] = list(quiet.dropped)
     return TickResult(candidate=packed, state=state, diagnostics=collected.diagnostics)

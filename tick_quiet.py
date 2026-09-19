@@ -44,10 +44,11 @@ class QuietWindow:
 
 @dataclass(frozen=True)
 class QuietPass:
-    """Due signals that survive the window, and the keys held back for later."""
+    """Due signals that survive the window, and what the window held or discarded."""
 
     due: list[DueSignal]
     deferred: tuple[str, ...] = ()
+    dropped: tuple[str, ...] = ()
 
 
 def parse_clock(value: Any) -> time | None:
@@ -109,9 +110,13 @@ def filter_quiet(due: list[DueSignal], *, settings: Mapping[str, Any], now: date
         return QuietPass(due=due)
     kept: list[DueSignal] = []
     deferred: list[str] = []
+    dropped: list[str] = []
     for item in due:
         if window.passes(item.signal):
             kept.append(item)
             continue
-        deferred.append(delivery_key(item.use_case_id, item.signal.fingerprint))
-    return QuietPass(due=kept, deferred=tuple(deferred))
+        key = delivery_key(item.use_case_id, item.signal.fingerprint)
+        # Perishable: saying it late is worse than not saying it. Stamping it keeps the
+        # cooldown honest, so the window does not turn into a queue of stale remarks.
+        (dropped if item.signal.perishable else deferred).append(key)
+    return QuietPass(due=kept, deferred=tuple(deferred), dropped=tuple(dropped))

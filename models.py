@@ -42,6 +42,10 @@ class Signal:
     decision: ActionSpec | JudgmentSpec
     initial_observation: Literal["baseline", "eligible"] = "baseline"
     repeat_after_seconds: int | None = None
+    #: True when the observation is only worth saying now: "it is late" read out at
+    #: 07:30 is wrong, while "you have not paused" is still true when the window ends.
+    #: Quiet hours drop a perishable signal instead of deferring it.
+    perishable: bool = False
 
 
 @dataclass(frozen=True)
