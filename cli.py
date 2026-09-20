@@ -71,6 +71,12 @@ def _import_tick_deps() -> tuple[Any, Any, Any]:
     return HeartbeatEngine, build_registry, TypeSafeClient
 
 
+def _watchdog_settings() -> Any:
+    from tick_health import watchdog_settings
+
+    return watchdog_settings
+
+
 def config_dir_setting(ctx: Any) -> str | None:
     config_mod = _config_mod()
     raw = ctx.get_config(config_mod.CONFIG_DIR_KEY, default=config_mod.PLUGIN_DIRNAME)
@@ -83,6 +89,38 @@ def config_dir_setting(ctx: Any) -> str | None:
 def resolve_home() -> Path:
     home: Path = _setup_mod().resolve_hermes_home()
     return home
+
+
+def blind_collectors(previous: Any) -> list[tuple[str, int, str, str]]:
+    """`(collector, streak, since, error)` for every collector that could not observe.
+
+    Read from persisted state, so it answers the question a config check cannot: not
+    "is this wired correctly" but "is anything still watching". A collector can stay
+    wired, configured, and scheduled while it has seen nothing for hours.
+    """
+    root = previous if isinstance(previous, Mapping) else {}
+    health = root.get("health")
+    if not isinstance(health, Mapping):
+        return []
+    rows: list[tuple[str, int, str, str]] = []
+    for collector, entry in health.items():
+        if not isinstance(entry, Mapping):
+            continue
+        try:
+            streak = int(entry.get("streak", 0))
+        except (TypeError, ValueError):
+            streak = 0
+        if streak <= 0:
+            continue
+        rows.append(
+            (
+                str(collector),
+                streak,
+                str(entry.get("since") or "?"),
+                str(entry.get("error") or "unknown"),
+            )
+        )
+    return sorted(rows, key=lambda row: (-row[1], row[0]))
 
 
 def cmd_tick(ctx: Any, args: argparse.Namespace) -> int:
@@ -169,6 +207,12 @@ def cmd_status(ctx: Any) -> int:
             print(f"    job: {config_mod.job_name(name)}")
             print(f"    shim: {shim} ({'present' if shim.is_file() else 'missing'})")
             print(f"    engine_state: {'present' if previous is not None else 'empty'}")
+            blind = blind_collectors(previous)
+            if blind:
+                for collector, streak, since, error in blind:
+                    print(f"    blind: {collector} — {streak} tick(s) since {since} ({error})")
+            elif previous is not None:
+                print("    blind: none")
         except Exception as exc:  # noqa: BLE001
             print(f"  {name}: error ({exc})")
     return 0
@@ -244,6 +288,20 @@ def cmd_doctor(ctx: Any) -> int:
                 warnings.append(f"{name}: cron job {job!r} not found (run setup)")
             else:
                 print(f"cron_job: {found.get('id', '?')} ({found.get('name', job)})")
+        # A heartbeat can be wired, scheduled, and completely blind. Escalate at the
+        # threshold the watchdog itself uses, so `doctor` and Discord agree on what
+        # counts as down. With the watchdog disabled nothing else will ever say it,
+        # so one blind tick is already an error.
+        after_ticks, _ = _watchdog_settings()(settings)
+        threshold = after_ticks if after_ticks > 0 else 1
+        for collector, streak, since, error in blind_collectors(
+            ctx.state.get(config_mod.state_key(name), default=None)
+        ):
+            report = (
+                f"{name}: collector {collector!r} has not observed for {streak} tick(s) "
+                f"since {since} ({error})"
+            )
+            (issues if streak >= threshold else warnings).append(report)
 
     if not os.environ.get("TYPESAFE_API_KEY"):
         warnings.append("TYPESAFE_API_KEY unset — deterministic fallbacks only")
