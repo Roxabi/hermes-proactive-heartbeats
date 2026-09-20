@@ -4,6 +4,17 @@ All notable changes to this plugin are documented here. Versions follow
 [semantic versioning](https://semver.org/spec/v2.0.0.html); releases are tagged
 `proactive-heartbeats/vX.Y.Z`.
 
+## 0.6.0 — 2026-09-20
+
+### Added
+
+- `Signal(awake_evidence=True)` for observations emitted on measured presence.
+  Quiet hours let them through whatever `min_priority` says. The window is a
+  proxy for "nobody is there to be woken", and a collector that read presence
+  knows the answer the clock was guessing: holding those signals back silenced
+  the care nudges that exist *for* the odd hours — "02:00 and still typing" is
+  the moment that advice is worth anything, not noise to suppress.
+
 ## 0.5.0 — 2026-09-19
 
 ### Added
