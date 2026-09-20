@@ -3,6 +3,12 @@
 Deferral, not suppression: a deferred observation is never stamped in `delivered`, so it
 stays due and speaks as soon as the window ends. A suppressed one would start a cooldown
 and could stay unsaid for hours after the person is back.
+
+The window is a proxy, not the goal. What it protects is sleep, and the clock is only a
+guess about sleep: a person typing at 02:00 is exactly who a "it is late" nudge is for.
+A signal that carries `awake_evidence` was emitted on measured presence, so it crosses the
+window untouched — otherwise the window would silence the nudges that only exist for the
+odd hours it covers.
 """
 
 from __future__ import annotations
@@ -34,6 +40,10 @@ class QuietWindow:
         return current >= self.start or current < self.end
 
     def passes(self, signal: Signal) -> bool:
+        # The window is a proxy for "nobody is there to be woken". A collector that measured
+        # presence knows better than the clock does, so its evidence outranks the floor.
+        if signal.awake_evidence:
+            return True
         if self.min_priority is None:
             return False
         return best_priority(signal) >= self.min_priority

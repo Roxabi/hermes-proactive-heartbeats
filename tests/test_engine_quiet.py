@@ -149,3 +149,35 @@ class QuietHoursTests(IsolatedHomeTestCase):
 
         self.assertIsNotNone(result.candidate)
         self.assertEqual(result.candidate.fingerprint, "care:late")
+
+    def test_measured_presence_crosses_the_window_the_clock_would_close(self) -> None:
+        """02:00 is when "it is late" earns its keep — provided somebody is there to read it."""
+
+        late = replace(
+            rule_signal("care:late", priority=60, initial_observation="eligible"),
+            perishable=True,
+            awake_evidence=True,
+        )
+
+        result = tick([late], now=local(2, 30))
+
+        self.assertIsNotNone(result.candidate)
+        self.assertEqual(result.candidate.fingerprint, "care:late")
+        self.assertNotIn("quiet_dropped", result.state)
+        self.assertNotIn("quiet_deferred", result.state)
+
+    def test_presence_outranks_a_floor_no_priority_could_clear(self) -> None:
+        """The evidence is about who is awake, not about how loud the observation is."""
+
+        water = replace(eligible("care:pause", 50), awake_evidence=True)
+
+        result = tick([water], now=local(3, 0), quiet={"start": NIGHT, "end": MORNING})
+
+        self.assertIsNotNone(result.candidate)
+        self.assertEqual(result.candidate.fingerprint, "care:pause")
+
+    def test_a_collector_that_cannot_see_presence_is_still_held_back(self) -> None:
+        result = tick([eligible("care:pause", 50)], now=local(3, 0))
+
+        self.assertIsNone(result.candidate)
+        self.assertEqual(result.state["quiet_deferred"], ["host:care:pause"])

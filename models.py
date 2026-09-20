@@ -46,6 +46,12 @@ class Signal:
     #: 07:30 is wrong, while "you have not paused" is still true when the window ends.
     #: Quiet hours drop a perishable signal instead of deferring it.
     perishable: bool = False
+    #: True when the collector has direct evidence the person is awake and at the keyboard.
+    #: Quiet hours exist to protect sleep; a signal carrying that evidence cannot disturb it,
+    #: and holding it back would silence the nudges that only matter at an odd hour
+    #: ("it is 02:00 and you are still typing"). Evidence, never a wish: a collector that
+    #: merely reads the clock must leave this false.
+    awake_evidence: bool = False
 
 
 @dataclass(frozen=True)
