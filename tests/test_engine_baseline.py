@@ -39,6 +39,7 @@ class HeartbeatBaselineTests(IsolatedHomeTestCase):
                     "host:disk:root": {
                         "at": "2026-09-17T12:00:00Z",
                         "action": "baseline",
+                        "woke": False,
                     }
                 },
             },

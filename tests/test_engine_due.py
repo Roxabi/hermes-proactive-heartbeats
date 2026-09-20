@@ -236,7 +236,7 @@ class HeartbeatDueTests(IsolatedHomeTestCase):
         self.assertEqual(use_case.delivered_views[1], {})
         self.assertEqual(
             use_case.delivered_views[2],
-            {"disk:root": {"at": "2026-09-17T12:00:00Z", "action": "notify"}},
+            {"disk:root": {"at": "2026-09-17T12:00:00Z", "action": "notify", "woke": True}},
         )
 
     def test_due_signal_that_lost_the_tick_is_visible_as_silent(self) -> None:
@@ -265,11 +265,11 @@ class HeartbeatDueTests(IsolatedHomeTestCase):
         self.assertEqual(first.candidate.collector, "beta")
         self.assertEqual(
             loud.delivered_views[2],
-            {"high": {"at": "2026-09-17T12:00:00Z", "action": "notify"}},
+            {"high": {"at": "2026-09-17T12:00:00Z", "action": "notify", "woke": True}},
         )
         self.assertEqual(
             quiet.delivered_views[2],
-            {"low": {"at": "2026-09-17T12:00:00Z", "action": "silent"}},
+            {"low": {"at": "2026-09-17T12:00:00Z", "action": "silent", "woke": False}},
         )
 
     def test_baselined_fingerprint_is_visible_as_baseline(self) -> None:
@@ -284,6 +284,6 @@ class HeartbeatDueTests(IsolatedHomeTestCase):
             use_case.delivered_views,
             [
                 {},
-                {"disk:root": {"at": "2026-09-17T12:00:00Z", "action": "baseline"}},
+                {"disk:root": {"at": "2026-09-17T12:00:00Z", "action": "baseline", "woke": False}},
             ],
         )

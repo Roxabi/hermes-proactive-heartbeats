@@ -109,17 +109,31 @@ class Candidate:
         }
 
 
+def was_announced(record: Any) -> bool:
+    """True only when a delivery record proves the agent was woken for that fingerprint.
+
+    Collectors that must not repeat themselves — a CVE already reported, a digest already
+    sent — ask this instead of interpreting the action name. The engine records ``woke``
+    from the resolved action, so a non-waking outcome it learns to stamp later cannot
+    silently read as "said": that is how `quiet` (0.5.0) started counting as announced in
+    a collector written against `{"baseline", "silent"}`.
+
+    Anything unrecognised — a malformed record, one written before this field existed —
+    reads as not announced. Repeating an observation costs a duplicate line; swallowing
+    one costs the whole point of the collector.
+    """
+    return isinstance(record, Mapping) and record.get("woke") is True
+
+
 @dataclass(frozen=True)
 class TickContext:
     """Read-only context for one tick, narrowed to the use case being invoked.
 
-    `delivered` maps that use case's own fingerprints — never another use
-    case's — to the delivery record persisted before this tick:
-    `{"at": "<iso8601>", "action": "<action name>"}`. Action `baseline` means
-    the fingerprint was only baselined, `silent` that it was due but did not
-    wake the agent; any other name is the action that actually woke it. So
-    `baseline` and `silent` were never announced to the user, and a first tick
-    sees an empty mapping.
+    `delivered` maps that use case's own fingerprints — never another use case's — to the
+    delivery record persisted before this tick:
+    `{"at": "<iso8601>", "action": "<action name>", "woke": <bool>}`. `woke` is the only
+    field that answers "was this said to the user"; read it through `was_announced`
+    rather than by interpreting the action name. A first tick sees an empty mapping.
     """
 
     now: datetime

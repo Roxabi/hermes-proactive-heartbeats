@@ -137,18 +137,19 @@ def _settle(
         delivered[delivery_key(candidate.collector, candidate.fingerprint)] = {
             "at": iso(context.now),
             "action": candidate.action.name,
+            "woke": candidate.action.wake_agent,
         }
 
     for item in due:
         key = delivery_key(item.use_case_id, item.signal.fingerprint)
         if key in delivered_keys:
             continue
-        delivered[key] = {"at": iso(context.now), "action": "silent"}
+        delivered[key] = {"at": iso(context.now), "action": "silent", "woke": False}
 
     for key in quiet.dropped:
         # A perishable observation the window swallowed still burns its cooldown:
         # it was decided, not postponed.
-        delivered[key] = {"at": iso(context.now), "action": "quiet"}
+        delivered[key] = {"at": iso(context.now), "action": "quiet", "woke": False}
 
     use_cases = dict(collected.next_use_cases)
     if watchdog.active:
