@@ -4,7 +4,7 @@ from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
 from engine import HeartbeatEngine
-from models import Snapshot
+from models import Snapshot, was_announced
 from tests.engine_fakes import FakeTypeSafe, FakeUseCase, choice_signal, context, rule_signal
 from tests.isolation import IsolatedHomeTestCase
 
@@ -138,6 +138,26 @@ class QuietHoursTests(IsolatedHomeTestCase):
         still_night = tick([late], now=local(4, 0), previous=night.state)
         self.assertIsNone(still_night.candidate)
         self.assertNotIn("quiet_dropped", still_night.state)
+
+    def test_a_signal_the_window_swallowed_never_reads_as_announced(self) -> None:
+        """`quiet` is a stamp the engine learned to write in 0.5.0, after the collectors
+        were written. One reading action names against `{"baseline", "silent"}` concluded
+        the user had been told — which is how a CVE stops being reported at all. The
+        record states the outcome instead of implying it."""
+        late = replace(
+            rule_signal("care:late", priority=60, initial_observation="eligible"),
+            perishable=True,
+        )
+        held = eligible("care:pause", 50)
+
+        night = tick([late, held], now=local(2, 30))
+
+        self.assertIsNone(night.candidate)
+        self.assertFalse(was_announced(night.state["delivered"]["host:care:late"]))
+        self.assertFalse(
+            any(was_announced(record) for record in night.state["delivered"].values()),
+            "nobody was woken tonight, so no record may claim otherwise",
+        )
 
     def test_a_perishable_signal_still_wakes_outside_the_window(self) -> None:
         late = replace(

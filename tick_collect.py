@@ -138,7 +138,7 @@ def stamp_baseline(delivered: dict[str, Any], collected: CollectPass, now: datet
             signal = collected.signal_index.get(key)
             if signal is None or signal.initial_observation == "eligible":
                 continue
-            delivered[key] = {"at": iso(now), "action": "baseline"}
+            delivered[key] = {"at": iso(now), "action": "baseline", "woke": False}
 
 
 def first_invalid_signal(signals: tuple[Signal, ...]) -> str | None:

@@ -4,6 +4,18 @@ All notable changes to this plugin are documented here. Versions follow
 [semantic versioning](https://semver.org/spec/v2.0.0.html); releases are tagged
 `proactive-heartbeats/vX.Y.Z`.
 
+## 0.8.0 — 2026-09-20
+
+### Changed
+
+- Delivery records carry `woke`, and collectors ask `was_announced(record)` instead of
+  interpreting the action name. A collector cannot know every non-waking stamp the
+  engine might learn to write: `quiet` (0.5.0) landed after the bundled collectors were
+  written, and one testing `action not in {"baseline", "silent"}` read a signal the
+  quiet window had swallowed as already said — a CVE that stops being reported at all.
+  Unrecognised records now read as *not* announced, so an observation is repeated
+  rather than dropped.
+
 ## 0.7.0 — 2026-09-20
 
 ### Added

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 from engine import HeartbeatEngine
-from models import Snapshot
+from models import Snapshot, was_announced
 from tests.engine_fakes import NOW, FakeTypeSafe, FakeUseCase, context, rule_signal
 from tests.isolation import IsolatedHomeTestCase
 
@@ -25,11 +25,17 @@ class HeartbeatDeliveredTests(IsolatedHomeTestCase):
 
         self.assertEqual(
             alpha.delivered_views[1],
-            {"cve:repo:pkg": {"at": "2026-09-17T12:00:00Z", "action": "baseline"}},
+            {"cve:repo:pkg": {"at": "2026-09-17T12:00:00Z", "action": "baseline", "woke": False}},
         )
         self.assertEqual(
             beta.delivered_views[1],
-            {"beta:cve:repo:pkg": {"at": "2026-09-17T12:00:00Z", "action": "baseline"}},
+            {
+                "beta:cve:repo:pkg": {
+                    "at": "2026-09-17T12:00:00Z",
+                    "action": "baseline",
+                    "woke": False,
+                }
+            },
         )
 
     def test_delivery_record_of_a_vanished_fingerprint_is_not_persisted(self) -> None:
@@ -110,7 +116,7 @@ class HeartbeatDeliveredTests(IsolatedHomeTestCase):
                 "broken:ancient": {"at": "2026-09-16T11:00:00Z", "action": "notify"},
                 "healthy:gone": {"at": "2026-09-17T11:00:00Z", "action": "notify"},
                 # The healthy collector still resolved and was stamped this tick.
-                "healthy:new": {"at": "2026-09-17T12:00:00Z", "action": "notify"},
+                "healthy:new": {"at": "2026-09-17T12:00:00Z", "action": "notify", "woke": True},
             },
         )
 
@@ -165,3 +171,21 @@ class HeartbeatDeliveredTests(IsolatedHomeTestCase):
                 "beta:cve:repo:pkg": {"at": "2026-09-17T12:00:00Z", "action": "notify"},
             },
         )
+
+    def test_a_waking_delivery_is_the_only_thing_that_reads_as_announced(self) -> None:
+        engine = HeartbeatEngine(
+            [FakeUseCase("host", [Snapshot(signals=(rule_signal("disk:root", priority=70),))] * 2)],
+            typesafe=FakeTypeSafe({}),
+        )
+        baseline = engine.tick(context(), previous_state=None)
+        woken = engine.tick(context(now=NOW + timedelta(hours=9)), previous_state=baseline.state)
+
+        self.assertFalse(was_announced(baseline.state["delivered"]["host:disk:root"]))
+        self.assertTrue(was_announced(woken.state["delivered"]["host:disk:root"]))
+
+    def test_an_unreadable_record_repeats_rather_than_swallows(self) -> None:
+        """Records written before ``woke`` existed, or by a future engine, must not be
+        read as "already said" — a duplicate line is recoverable, a dropped CVE is not."""
+        for record in ({"at": "2026-09-17T12:00:00Z", "action": "notify"}, {}, None, "notify"):
+            with self.subTest(record=record):
+                self.assertFalse(was_announced(record))
