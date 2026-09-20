@@ -241,3 +241,106 @@ class PluginTickHandlerTests(IsolatedHomeTestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(stdout.getvalue(), rendered + "\n")
         self.assertIn("probe", stderr.getvalue())
+
+
+class DoctorCollectorHealthTests(IsolatedHomeTestCase):
+    """A heartbeat can be wired, scheduled, and seeing nothing at all.
+
+    Measured on the live install: `sense` was blind for 37 consecutive ticks while
+    `doctor` printed OK, because every check it ran was about configuration.
+    """
+
+    def _heartbeat(self, watchdog: str = "") -> None:
+        root = self.hermes_home / "proactive-heartbeats"
+        (root / "heartbeats").mkdir(parents=True)
+        (root / "proactive-heartbeats.json").write_text(
+            f'{{"collector_watchdog": {{"after_ticks": {watchdog or 3}}}}}', encoding="utf-8"
+        )
+        (root / "heartbeats" / "care.json").write_text(
+            '{"delivery": {"target": "local"}, "collectors": {}}', encoding="utf-8"
+        )
+
+    def _run(self, command: str, health: dict[str, Any]) -> tuple[int, str]:
+        register = load_register()
+        if register is None:
+            self.skipTest("plugin register() is not importable without a Hermes install")
+        ctx = FakeCtx()
+        ctx.state.set(
+            "heartbeat:care",
+            {"version": 3, "use_cases": {}, "delivered": {}, "health": health},
+        )
+        register(ctx)
+        handler = ctx.commands[0]["handler_fn"]
+        args = SimpleNamespace(proactive_heartbeats_command=command)
+        stdout = io.StringIO()
+        with mock.patch.object(sys, "stdout", stdout):
+            exit_code = handler(args)
+        return exit_code, stdout.getvalue()
+
+    def _sense_line(self, out: str) -> str:
+        """The one report line about `sense`, with its `error:`/`warn:` classification.
+
+        Asserting the classification, not the exit code: an isolated home has no `hermes`
+        on PATH and no cron shim, so `doctor` is already failing for reasons this test
+        does not own.
+        """
+        lines = [line.strip() for line in out.splitlines() if "has not observed" in line]
+        self.assertEqual(len(lines), 1, out)
+        return lines[0]
+
+    def test_doctor_reports_a_collector_that_has_stopped_observing_as_an_error(self) -> None:
+        self._heartbeat()
+
+        _, out = self._run(
+            "doctor",
+            {"sense": {"streak": 37, "since": "2026-09-19T21:58:07Z", "error": "unavailable"}},
+        )
+
+        line = self._sense_line(out)
+        self.assertTrue(line.startswith("error:"), line)
+        self.assertIn("'sense'", line)
+        self.assertIn("37 tick(s)", line)
+        self.assertIn("unavailable", line)
+
+    def test_a_streak_below_the_watchdog_threshold_is_only_a_warning(self) -> None:
+        """One missed tick is an ssh blip; the threshold is what the watchdog itself uses,
+        so `doctor` and the Discord alert never disagree about what counts as down."""
+
+        self._heartbeat()
+
+        _, out = self._run("doctor", {"sense": {"streak": 1, "since": "x", "error": "timeout"}})
+
+        line = self._sense_line(out)
+        self.assertTrue(line.startswith("warn:"), line)
+        self.assertIn("1 tick(s)", line)
+
+    def test_one_blind_tick_is_fatal_when_the_watchdog_is_disabled(self) -> None:
+        """Nothing else would ever report it."""
+
+        self._heartbeat(watchdog="0")
+
+        _, out = self._run("doctor", {"sense": {"streak": 1, "since": "x", "error": "timeout"}})
+
+        self.assertTrue(self._sense_line(out).startswith("error:"))
+
+    def test_a_healthy_heartbeat_reports_no_blindness(self) -> None:
+        self._heartbeat()
+
+        _, out = self._run("doctor", {})
+
+        self.assertNotIn("has not observed", out)
+
+    def test_status_names_the_blind_collectors(self) -> None:
+        self._heartbeat()
+
+        _, out = self._run(
+            "status",
+            {
+                "sense": {"streak": 4, "since": "t1", "error": "unavailable"},
+                "host": {"streak": 12, "since": "t0", "error": "ssh"},
+            },
+        )
+
+        # Worst first: the operator reads the top of the list.
+        self.assertLess(out.index("blind: host"), out.index("blind: sense"))
+        self.assertIn("12 tick(s) since t0", out)

@@ -4,6 +4,17 @@ All notable changes to this plugin are documented here. Versions follow
 [semantic versioning](https://semver.org/spec/v2.0.0.html); releases are tagged
 `proactive-heartbeats/vX.Y.Z`.
 
+## 0.7.0 — 2026-09-20
+
+### Added
+
+- `doctor` and `status` read `state.health`. A collector blind for at least
+  `collector_watchdog.after_ticks` ticks fails `doctor`; a shorter streak warns;
+  with the watchdog disabled one blind tick is already fatal, because nothing
+  else would report it. Measured on the live install: `sense` had not observed
+  for 37 consecutive ticks while `doctor` printed `OK`, since every check it ran
+  was about configuration rather than about whether anything was still watching.
+
 ## 0.6.0 — 2026-09-20
 
 ### Added
