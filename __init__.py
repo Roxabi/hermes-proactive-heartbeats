@@ -1,4 +1,4 @@
-"""Proactive heartbeats Hermes plugin — CLI registration only."""
+"""Proactive heartbeats Hermes plugin — CLI and slash registration only."""
 
 from __future__ import annotations
 
@@ -13,11 +13,14 @@ if _ROOT_S not in sys.path:
 
 
 def register(ctx: Any) -> None:
-    """Register the ``proactive-heartbeats`` CLI subtree. No hooks, tools, or background work."""
+    """Register surfaces. No hooks, tools, or background work."""
     from . import cli
 
     def _handler(args: Any) -> int:
         return cli.handle(ctx, args)
+
+    def _suspend(raw: str) -> str:
+        return cli.suspend_reply(ctx, raw)
 
     ctx.register_cli_command(
         name="proactive-heartbeats",
@@ -26,7 +29,13 @@ def register(ctx: Any) -> None:
         handler_fn=_handler,
         description=(
             "Operator CLI for the proactive heartbeats plugin: tick one named "
-            "heartbeat, inspect status, run doctor checks, and reconcile one "
-            "Hermes cron job per heartbeat."
+            "heartbeat, inspect status, run doctor checks, suspend an enablement, "
+            "and reconcile one Hermes cron job per heartbeat."
         ),
+    )
+    ctx.register_command(
+        "suspend",
+        handler=_suspend,
+        description="Suspend one collector for N seconds, or list enablements",
+        args_hint="[heartbeat] <collector> <seconds>",
     )
