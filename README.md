@@ -67,6 +67,8 @@ These names are the contract: they are identical in the code, the JSON keys, the
 | **Source** | Provenance stamped on the wake payload: `rule` (deterministic), `typesafe` (mapped model answer), `fallback` (model unavailable, malformed, or unmapped answer). |
 | **Threshold** | `typesafe_threshold`: the probability above which a boolean-shaped semantic answer counts as "yes". |
 | **`typesafe_model`** | TypeSafe System One model for the semantic batch (default `jev-latest`). Direct rules never use it. `status` prints the resolved value. |
+| **Wording facts** — `ActionSpec.wording_facts` | The fact keys an action's message is worded from: every fact that message may state. `None` (default) means the message is never reused; `()` means it states no fact at all. It is a claim about the instruction, so list a fact whenever the instruction may cite it — an omitted one is a stale message replayed. `context.now` is never part of it: an action that says the hour carries the hour in a listed fact. |
+| **Reuse key** | `reuseKey`, printed next to `heartbeat_candidate` when **every** packed observation declares wording facts: a digest of each observation's collector, fingerprint, action, and wording facts, plus the packed instruction and the context without `now`. The same key means the same message, so Hermes Cron replays the message it already wrote — and its voice — instead of waking the agent again. Any other fact, a TypeSafe probability, or the clock may move without changing it. |
 
 ### Gating
 
@@ -93,7 +95,7 @@ The cardinality is: **one plugin → many heartbeats → many collectors → man
 4. Each enabled collector is loaded from the operator directory and returns a `Snapshot`.
 5. Baseline, cooldown, and active-fingerprint gates decide which signals are due. A collector that fails is isolated: it contributes nothing, keeps its previous state, and its health streak grows — every other collector still resolves.
 6. Quiet hours hold back what must not wake anyone now. Deterministic `ActionSpec` rules then resolve directly; only the remaining due semantic `JudgmentSpec` decisions enter the optional TypeSafe batch, and their configured fallback action applies when TypeSafe cannot decide.
-7. Every waking observation is packed into one `heartbeat_candidate` (`inputs` is a list). Quiet ticks emit the exact gate. Hermes Cron interprets stdout and owns delivery.
+7. Every waking observation is packed into one `heartbeat_candidate` (`inputs` is a list). When every observation declares wording facts, a `reuseKey` rides beside it. Quiet ticks emit the exact gate. Hermes Cron interprets stdout and owns delivery.
 
 ## File layout and ownership
 
@@ -364,7 +366,7 @@ Silent ticks print exactly:
 {"wakeAgent": false}
 ```
 
-Wake ticks print one compact JSON object with `heartbeat_candidate` (no `wakeAgent` line). Hermes Cron reads that stdout contract.
+Wake ticks print one compact JSON object with `heartbeat_candidate` (no `wakeAgent` line), plus a top-level `reuseKey` when the wake is reusable. Hermes Cron reads that stdout contract.
 
 ## Tick semantics
 
@@ -376,6 +378,7 @@ Wake ticks print one compact JSON object with `heartbeat_candidate` (no `wakeAge
 - **Semantic decisions** alone enter the TypeSafe batch. Mapped answers use source `typesafe`; malformed, unmapped, or unavailable answers use the configured action with source `fallback`.
 - **Soft diagnostics** stay in collector state; hard collector exceptions or invalid return types fail the tick.
 - **Packing** is deterministic: every waking observation is included, ordered by highest `priority`, then collector id, then fingerprint. A semantic decision never outranks a rule by virtue of being semantic.
+- **Reuse** is opt-in per action. A wake whose observations all declare `wording_facts` carries a `reuseKey`; a Hermes Cron that reads it replays the final it already wrote for that key (for `cron.response_reuse_hours`, 24 h by default) instead of running the agent, and the spoken copy reuses its audio the same way. The plugin still collects, judges, and stamps delivery exactly as before — only the writing and the speech are skipped. A Hermes Cron that does not read `reuseKey` ignores it and wakes the agent as it always did. A drift reminder whose facts carry minute counts that move every tick, but whose message only names the priorities, lists `("priorities",)` and is written once per priority list instead of once per reminder.
 - **Heartbeat state** is versioned (`STATE_VERSION = 3`). A record written by another version is discarded rather than migrated — the next tick therefore baselines again, and already-known conditions stay quiet for one cooldown.
 
 ## Architecture
@@ -391,7 +394,7 @@ Durable plugin state lives under `$HERMES_HOME/plugin-data/` via `ctx.state`. Se
 ## Add a collector
 
 1. Write `$HERMES_HOME/proactive-heartbeats/collectors/{id}.py` with a `Collector` (or any class with `collect()` and matching `id`).
-2. Emit stable fingerprints and compact facts. Set `decision` to a direct `ActionSpec` rule or a `JudgmentSpec` that maps semantic labels to trusted actions.
+2. Emit stable fingerprints and compact facts. Set `decision` to a direct `ActionSpec` rule or a `JudgmentSpec` that maps semantic labels to trusted actions. When an action's message only ever states some of the facts, list them in its `wording_facts` so a repeat replays the message already written.
 3. Decide what the signal should do on a heartbeat's very first tick: the default `initial_observation="baseline"` records it and defers it by one cooldown, while `"eligible"` lets it wake immediately. Anything that must not sit unreported for a cooldown window belongs in `"eligible"`.
 4. Use `context.delivered` when the collector needs to know what was already announced — a digest that lists everything once a day and only the new items otherwise calls `was_announced(context.delivered.get(fingerprint))`. Never compare action names: the set of non-waking stamps belongs to the engine and grows without asking you.
 5. Enable it from a heartbeat JSON: `collectors.{id}.enabled: true`.
