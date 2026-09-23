@@ -77,6 +77,10 @@ class HeartbeatTypeSafeTests(IsolatedHomeTestCase):
         self.assertEqual(result.candidate.action.name, "bundle")
         self.assertEqual(result.candidate.action.priority, 80)
         self.assertEqual(observation_ids(result), [("beta", "high"), ("alpha", "low")])
+        # Each observation's note reaches the writer tied to its own observation.
+        instruction = result.candidate.action.instruction
+        self.assertIn("[high] Deliver notify", instruction)
+        self.assertIn("[low] Deliver notify", instruction)
         self.assertIn("beta:high", result.state["delivered"])
         self.assertIn("alpha:low", result.state["delivered"])
 

@@ -14,8 +14,10 @@ DEFAULT_PROMPT = (
     "When that object contains heartbeat_candidate, cover every entry in "
     "heartbeat_candidate.inputs. Each entry already includes facts and the judgment "
     "(decision). Follow heartbeat_candidate.delivery.instruction and respect "
-    "heartbeat_candidate.delivery.max_sentences. Compose one short message that "
-    "mentions every useful item; do not re-open whether to speak, and do not invent "
+    "heartbeat_candidate.delivery.max_sentences. Compose one short, coherent "
+    "message: when several inputs are present, connect them into a single line of "
+    "thought instead of placing one sentence per input side by side; do not re-open "
+    "whether to speak, and do not invent "
     "topics that are not in inputs. Ground the message in those inputs and "
     "heartbeat_candidate.context. If inputs is empty, reply with exactly [SILENT]."
 )

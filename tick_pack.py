@@ -65,24 +65,34 @@ def _observation(candidate: Candidate) -> JsonObject:
 def _bundle_action(candidates: list[Candidate]) -> ActionSpec:
     if len(candidates) == 1:
         return candidates[0].action
-    instructions = [
-        candidate.action.instruction.strip()
+    notes = [
+        f"[{candidate.fingerprint}] {candidate.action.instruction.strip()}"
         for candidate in candidates
         if candidate.action.instruction.strip()
     ]
-    joined = " ".join(instructions)
+    per_item = (" Per-observation notes: " + " ".join(notes)) if notes else ""
     return ActionSpec(
         name="bundle",
         wake_agent=True,
         priority=max(candidate.action.priority for candidate in candidates),
-        instruction=(
-            "Cover every observation in inputs. Each entry already includes facts "
-            "and a judgment. Compose one short message that mentions every item. "
-            "Do not add topics that are not in inputs. Do not re-open whether to speak."
-            + ((" " + joined) if joined else "")
-        ),
+        instruction=_BUNDLE_INSTRUCTION + per_item,
         max_sentences=sum(max(1, candidate.action.max_sentences) for candidate in candidates),
     )
+
+
+# Several observations used to come out as one pasted sentence each ("Drink some water.
+# Get back to your priorities."). The writer is told how to relate them, not a template.
+_BUNDLE_INSTRUCTION = (
+    "Several observations in inputs woke you at once. Write ONE coherent message, not "
+    "one sentence per observation placed side by side. First work out how they relate: "
+    "which fact explains another, what he should do now, what he should come back to "
+    "afterwards. Then write a single line of thought that follows that logic, with "
+    "natural transitions between the parts, each fact said once, and every "
+    "observation's point kept. The per-observation notes below say WHAT each one must "
+    "convey; their wording, examples and sentence counts describe that observation "
+    "alone and are not sentences to paste. Do not add topics that are not in inputs. "
+    "Do not re-open whether to speak."
+)
 
 
 def _candidate_context(context: TickContext) -> JsonObject:
