@@ -31,6 +31,12 @@ def configure_parser(subparser: argparse.ArgumentParser) -> None:
     )
     subs.add_parser("status", help="Show concise operator status (no secrets)")
     subs.add_parser("doctor", help="Run local health checks (no secrets)")
+    suspend = subs.add_parser("suspend", help="Suspend one enablement, or list them")
+    suspend.add_argument(
+        "words",
+        nargs="*",
+        help="[heartbeat] <collector> <seconds>; omit both to list",
+    )
     subs.add_parser("setup", help="Write config skeletons and reconcile one cron job per heartbeat")
 
 
@@ -44,8 +50,10 @@ def handle(ctx: Any, args: argparse.Namespace) -> int:
         return cmd_doctor(ctx)
     if command == "setup":
         return cmd_setup(ctx)
+    if command == "suspend":
+        return cmd_suspend(ctx, args)
     print(
-        "Usage: hermes proactive-heartbeats {tick|status|doctor|setup}",
+        "Usage: hermes proactive-heartbeats {tick|status|doctor|setup|suspend}",
         file=sys.stderr,
     )
     return 2
@@ -141,6 +149,12 @@ def cmd_tick(ctx: Any, args: argparse.Namespace) -> int:
             return 1
 
         HeartbeatEngine, build_registry, TypeSafeClient = _import_tick_deps()
+        from suspend import SUSPEND_KEY, store_warning, suspended_collectors
+
+        raw_suspends = ctx.state.get(SUSPEND_KEY, default=None)
+        warning = store_warning(raw_suspends)
+        if warning:
+            print(f"proactive-heartbeats: {warning}", file=sys.stderr)
         client = TypeSafeClient(
             api_key=os.environ.get("TYPESAFE_API_KEY"),
             model=str(settings["typesafe_model"]),
@@ -155,6 +169,7 @@ def cmd_tick(ctx: Any, args: argparse.Namespace) -> int:
         result = engine.tick(
             TickContext(now=datetime.now(timezone.utc), settings=settings),
             previous_state=dict(previous) if isinstance(previous, Mapping) else None,
+            suspended=suspended_collectors(raw_suspends, name, datetime.now(timezone.utc)),
         )
         ctx.state.set(key, result.state)
         if result.diagnostics:
@@ -213,6 +228,8 @@ def cmd_status(ctx: Any) -> int:
                     print(f"    blind: {collector} — {streak} tick(s) since {since} ({error})")
             elif previous is not None:
                 print("    blind: none")
+            for line in _suspend_lines(ctx, name):
+                print(f"    suspended: {line}")
         except Exception as exc:  # noqa: BLE001
             print(f"  {name}: error ({exc})")
     return 0
@@ -306,17 +323,22 @@ def cmd_doctor(ctx: Any) -> int:
     if not os.environ.get("TYPESAFE_API_KEY"):
         warnings.append("TYPESAFE_API_KEY unset — deterministic fallbacks only")
 
+    notes = _suspend_notes(ctx, names)
     if issues:
         print("doctor: FAIL")
         for item in issues:
             print(f"  error: {item}")
         for item in warnings:
             print(f"  warn: {item}")
+        for item in notes:
+            print(f"  info: {item}")
         return 1
 
     print("doctor: OK")
     for item in warnings:
         print(f"  warn: {item}")
+    for item in notes:
+        print(f"  info: {item}")
     print(f"  hermes: {hermes}")
     print(f"  root: {root_file}")
     print(f"  heartbeats: {', '.join(names) if names else '(none)'}")
@@ -345,3 +367,60 @@ def cmd_setup(ctx: Any) -> int:
     except Exception as exc:  # noqa: BLE001
         print(f"proactive-heartbeats setup failed: {exc}", file=sys.stderr)
         return 1
+
+
+def suspend_reply(ctx: Any, raw: str) -> str:
+    """Text a Discord ``/suspend`` replies with. The exit code stays in the CLI."""
+    _code, text = _suspend_result(ctx, raw)
+    return text
+
+
+def cmd_suspend(ctx: Any, args: argparse.Namespace) -> int:
+    words = getattr(args, "words", None) or []
+    code, text = _suspend_result(ctx, " ".join(str(word) for word in words))
+    print(text)
+    return code
+
+
+def _suspend_result(ctx: Any, raw: str) -> tuple[int, str]:
+    from suspend import command
+
+    try:
+        home = resolve_home()
+    except Exception as exc:  # noqa: BLE001
+        return 2, f"suspend failed: {exc}"
+    return command(
+        ctx,
+        raw,
+        now=datetime.now(timezone.utc),
+        home=home,
+        config_dir=config_dir_setting(ctx),
+    )
+
+
+def _suspend_lines(ctx: Any, heartbeat: str) -> tuple[str, ...]:
+    from suspend import SUSPEND_KEY, active_lines
+
+    try:
+        raw = ctx.state.get(SUSPEND_KEY, default=None)
+    except Exception:  # noqa: BLE001 — status must not die on a bad store
+        return ()
+    return active_lines(raw, heartbeat, datetime.now(timezone.utc))
+
+
+def _suspend_notes(ctx: Any, names: list[str] | tuple[str, ...]) -> list[str]:
+    from suspend import SUSPEND_KEY, active_lines, store_warning
+
+    try:
+        raw = ctx.state.get(SUSPEND_KEY, default=None)
+    except Exception:  # noqa: BLE001
+        return ["suspend store unreadable"]
+    now = datetime.now(timezone.utc)
+    notes: list[str] = []
+    warning = store_warning(raw)
+    if warning:
+        notes.append(warning)
+    for name in names:
+        for line in active_lines(raw, name, now):
+            notes.append(f"{name}/{line}")
+    return notes

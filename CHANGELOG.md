@@ -4,6 +4,12 @@ All notable changes to this plugin are documented here. Versions follow
 [semantic versioning](https://semver.org/spec/v2.0.0.html); releases are tagged
 `proactive-heartbeats/vX.Y.Z`.
 
+## 0.10.0 — 2026-09-23
+
+### Added
+
+- `/suspend` in a Hermes session, and `hermes proactive-heartbeats suspend`, suspend one enablement for a whole number of seconds (0 to 7 days) or list them. The span is wall-clock, stored outside heartbeat state, and a suspended collector is not invoked. Its stamps stay, so the return does not burst, and the watchdog streak is cleared rather than treated as blindness. `status` and `doctor` mention an active span without failing for it.
+
 ## 0.9.0 — 2026-09-23
 
 ### Changed

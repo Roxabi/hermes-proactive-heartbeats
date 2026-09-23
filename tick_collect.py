@@ -37,6 +37,7 @@ def collect_use_cases(
     context: TickContext,
     previous_root: Mapping[str, Any],
     is_baseline: bool,
+    suspended: frozenset[str] = frozenset(),
 ) -> CollectPass:
     diagnostics: JsonObject = {}
     next_use_cases: dict[str, JsonObject] = {}
@@ -45,6 +46,9 @@ def collect_use_cases(
 
     for use_case in use_cases:
         previous_entry = use_case_entry(previous_root, use_case.id)
+        if use_case.id in suspended:
+            _retain_suspended(use_case.id, previous_entry, next_use_cases)
+            continue
         collector_context = replace(
             context,
             delivered=delivered_view(previous_root.get("delivered"), use_case.id),
@@ -168,6 +172,19 @@ def first_invalid_signal(signals: tuple[Signal, ...]) -> str | None:
             ):
                 return "JudgmentSpec.fallback_label must be a non-empty string"
     return None
+
+
+def _retain_suspended(
+    use_case_id: str,
+    previous_entry: Mapping[str, Any],
+    next_use_cases: dict[str, JsonObject],
+) -> None:
+    """Keep the last observation. A Suspend is not a failure and must not feed the watchdog."""
+
+    next_use_cases[use_case_id] = {
+        "state": dict(previous_entry.get("state") or {}),
+        "active": list(previous_entry.get("active") or []),
+    }
 
 
 def _retain_failed(

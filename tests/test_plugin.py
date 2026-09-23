@@ -35,12 +35,16 @@ class FakeCtx:
         self.config = config or {}
         self.state = FakeState()
         self.commands: list[dict[str, Any]] = []
+        self.slash_commands: list[dict[str, Any]] = []
 
     def get_config(self, key: str, default: Any = None) -> Any:
         return self.config.get(key, default)
 
     def register_cli_command(self, **kwargs: Any) -> None:
         self.commands.append(kwargs)
+
+    def register_command(self, name: str, handler: Any, **kwargs: Any) -> None:
+        self.slash_commands.append({"name": name, "handler": handler, **kwargs})
 
 
 def _load_module(module_name: str, path: Path, package: ModuleType | None = None) -> ModuleType:
@@ -115,7 +119,7 @@ def load_register() -> Callable[[Any], Any] | None:
 
 
 class PluginRegistrationTests(IsolatedHomeTestCase):
-    def test_register_only_registers_cli_command_without_setup_side_effects(self) -> None:
+    def test_register_only_registers_surfaces_without_setup_side_effects(self) -> None:
         register = load_register()
         if register is None:
             self.skipTest("plugin register() is not importable without a Hermes install")
@@ -129,11 +133,10 @@ class PluginRegistrationTests(IsolatedHomeTestCase):
         ):
             register(ctx)
 
-        self.assertEqual(len(ctx.commands), 1)
-        command = ctx.commands[0]
-        self.assertEqual(command["name"], "proactive-heartbeats")
-        self.assertTrue(callable(command["setup_fn"]))
-        self.assertTrue(callable(command["handler_fn"]))
+        self.assertEqual([command["name"] for command in ctx.commands], ["proactive-heartbeats"])
+        self.assertEqual([command["name"] for command in ctx.slash_commands], ["suspend"])
+        self.assertEqual(ctx.slash_commands[0]["args_hint"], "[heartbeat] <collector> <seconds>")
+        self.assertTrue(callable(ctx.slash_commands[0]["handler"]))
         self.assertEqual(ctx.state.sets, [])
         self.assertEqual(ctx.state.gets, [])
         subprocess_run.assert_not_called()

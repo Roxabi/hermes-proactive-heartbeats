@@ -79,19 +79,28 @@ class HeartbeatEngine:
         previous: Mapping[str, Any] | None = None,
         *,
         previous_state: Mapping[str, Any] | None = None,
+        suspended: frozenset[str] = frozenset(),
     ) -> TickResult:
         """Collect snapshots, gate due signals, optionally judge, and persist next state.
 
         A collector that fails is isolated: it contributes no signal and keeps its previous
         state, while every healthy collector still resolves and wakes. Sustained failure is
         itself reported, by the watchdog, instead of silently shrinking what is watched.
+        A suspended collector is not invoked. Its last state and delivery stamps stay, and
+        the gap is not blindness: the watchdog streak is cleared, not frozen.
         """
 
         prior = coerce_previous(previous_state if previous_state is not None else previous)
         is_baseline = prior is None
         previous_root = prior or empty_state()
         previous_delivered = previous_root.get("delivered") or {}
-        collected = collect_use_cases(self.use_cases, context, previous_root, is_baseline)
+        collected = collect_use_cases(
+            self.use_cases,
+            context,
+            previous_root,
+            is_baseline,
+            suspended,
+        )
         delivered = dict(previous_delivered)
         if is_baseline:
             stamp_baseline(delivered, collected, context.now)
