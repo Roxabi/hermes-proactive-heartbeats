@@ -4,6 +4,19 @@ All notable changes to this plugin are documented here. Versions follow
 [semantic versioning](https://semver.org/spec/v2.0.0.html); releases are tagged
 `proactive-heartbeats/vX.Y.Z`.
 
+## 0.9.0 — 2026-09-23
+
+### Changed
+
+- A packed wake asks the writer for **one coherent message**: work out how the
+  observations relate (what explains what, what to do now, what to come back to) and
+  write a single line of thought, instead of one sentence per observation side by side.
+  Each observation's instruction now reaches the writer as a note tied to its
+  fingerprint, and is read as what that observation must convey — not a sentence to
+  paste. Measured: "Drink a glass of water and stand up. You should get back to your
+  priorities: Metalyde, Ether." became one thought from the 94-minute stretch, through
+  the pause, to the priorities to resume. The default cron prompt says the same.
+
 ## 0.8.0 — 2026-09-20
 
 ### Changed
