@@ -4,6 +4,22 @@ All notable changes to this plugin are documented here. Versions follow
 [semantic versioning](https://semver.org/spec/v2.0.0.html); releases are tagged
 `proactive-heartbeats/vX.Y.Z`.
 
+## 0.11.0 — 2026-09-23
+
+### Added
+
+- `ActionSpec(wording_facts=(...))` names the facts an action's message is worded from.
+  A wake whose observations all declare them prints a top-level `reuseKey` beside
+  `heartbeat_candidate`: a digest of each observation's action and wording facts, the
+  packed instruction, and the context without `now`. A Hermes Cron that reads it replays
+  the message it already wrote for that key, and its voice, instead of waking the agent
+  again; one that does not ignores it. Measured on the live `ops` heartbeat: 18 drift
+  reminders in one evening, every one a fresh agent turn and a fresh TTS call, all
+  saying "your attention is elsewhere — Metalyde, Ether" because their minute counts
+  moved while the priorities did not. Unset (the default) keeps today's behaviour. A
+  bare string instead of a tuple fails the collector rather than projecting one fact
+  per character.
+
 ## 0.10.0 — 2026-09-23
 
 ### Added

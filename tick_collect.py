@@ -171,7 +171,21 @@ def first_invalid_signal(signals: tuple[Signal, ...]) -> str | None:
                 or not signal.decision.fallback_label
             ):
                 return "JudgmentSpec.fallback_label must be a non-empty string"
+        actions = (
+            signal.decision.actions.values()
+            if isinstance(signal.decision, JudgmentSpec)
+            else (signal.decision,)
+        )
+        if not all(_valid_wording_facts(action.wording_facts) for action in actions):
+            return "ActionSpec.wording_facts must be None or a tuple of non-empty strings"
     return None
+
+
+def _valid_wording_facts(keys: Any) -> bool:
+    # A bare string would pass a looser check and project one fact per character.
+    return keys is None or (
+        isinstance(keys, tuple) and all(isinstance(key, str) and key for key in keys)
+    )
 
 
 def _retain_suspended(

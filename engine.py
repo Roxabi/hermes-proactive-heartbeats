@@ -47,7 +47,9 @@ class TickResult:
 
         if self.candidate is None:
             return '{"wakeAgent": false}'
-        payload = {"heartbeat_candidate": self.candidate.as_json()}
+        payload: JsonObject = {"heartbeat_candidate": self.candidate.as_json()}
+        if self.candidate.reuse_key is not None:
+            payload["reuseKey"] = self.candidate.reuse_key
         return json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
 
 

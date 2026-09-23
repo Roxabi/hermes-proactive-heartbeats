@@ -19,6 +19,12 @@ class ActionSpec:
     priority: int
     instruction: str = ""
     max_sentences: int = 0
+    #: The fact keys this action's message is worded from: every fact it may state. A wake whose
+    #: observations all declare them carries a reuse key, and Hermes Cron replays the message it
+    #: already wrote for that key instead of waking the agent again. ``None`` (default): never
+    #: reused. ``()``: the message states no fact. ``context.now`` is never part of the key, so an
+    #: action that says the time must carry it in a listed fact.
+    wording_facts: tuple[str, ...] | None = None
 
 
 SILENT = ActionSpec(name="silent", wake_agent=False, priority=0)
@@ -74,6 +80,9 @@ class Candidate:
     context: JsonObject = field(default_factory=dict)
     decision: JsonObject = field(default_factory=dict)
     observations: tuple[JsonObject, ...] | None = None
+    #: Digest of everything the packed message may say; ``None`` when any observation cannot be
+    #: reused. Rendered next to the candidate as the Hermes Cron ``reuseKey``.
+    reuse_key: str | None = None
 
     def as_json(self) -> JsonObject:
         metadata = self.decision if isinstance(self.decision, Mapping) else {}
