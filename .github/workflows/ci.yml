@@ -3,6 +3,9 @@ name: CI
 on:
   push:
     branches: [main]
+    # A release is an explicit act: an annotated tag, pushed by hand (CONTRIBUTING.md § Releases).
+    # The same suite runs on the tagged commit, and the release job below needs it green.
+    tags: ["proactive-heartbeats/v*"]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
@@ -53,3 +56,55 @@ jobs:
 
       - name: Run unit tests
         run: python3 -m unittest discover -s tests -v
+
+      - name: Check release consistency
+        # plugin.yaml version must be the newest CHANGELOG heading: no section without its
+        # bump, no bump without its section.
+        run: python3 scripts/release.py check
+
+  release:
+    name: Publish the Release
+    needs: quality
+    # Tag pushes only; a fork pushing a matching tag must not publish under this repo's token.
+    if: startsWith(github.ref, 'refs/tags/proactive-heartbeats/v') && github.repository == 'Roxabi/hermes-proactive-heartbeats'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Full history + tags: origin/main for the ancestry check, the tag object itself for
+          # the annotated check and --verify-tag, every release tag for the latest decision.
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Verify the tag is annotated, points here, and is on main
+        run: |
+          # Annotated: a lightweight tag has no author, date or message to witness a release.
+          test "$(git cat-file -t "$GITHUB_REF_NAME")" = "tag"
+          test "$(git rev-list -n 1 "$GITHUB_REF_NAME")" = "$GITHUB_SHA"
+          # A tag on an unmerged branch is not a release.
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Idempotent by presence: a re-run must never recreate a published Release.
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "noop: Release $GITHUB_REF_NAME already exists."
+            exit 0
+          fi
+          python3 scripts/release.py notes "$GITHUB_REF_NAME" "$GITHUB_SHA" > "$RUNNER_TEMP/notes.md"
+          # A patch cut after a newer minor must not steal "Latest".
+          newest="$(git tag -l 'proactive-heartbeats/v*' --sort=-v:refname | head -n 1)"
+          latest=false
+          if [ "$newest" = "$GITHUB_REF_NAME" ]; then latest=true; fi
+          gh release create "$GITHUB_REF_NAME" \
+            --title "${GITHUB_REF_NAME/\/v/ }" \
+            --verify-tag \
+            --latest="$latest" \
+            --notes-file "$RUNNER_TEMP/notes.md"

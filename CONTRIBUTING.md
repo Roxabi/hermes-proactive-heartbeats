@@ -68,13 +68,22 @@ A quiet tick must remain the exact standalone line:
 
 ## Releases
 
-A release is a tag plus a GitHub release; there is no publishing step and no release automation.
+Trunk-manual, as in the fleet's release convention: merging to `main` cuts nothing; a release exists because someone pushed an annotated tag. There is no publishing step — Hermes installs a commit SHA.
 
-1. Land every change through a PR — `main` is frozen against direct pushes.
-2. In one release PR, bump `version:` in `plugin.yaml` and add the matching `CHANGELOG.md` section.
-3. After CI is green and the PR is merged with a merge commit, tag that merge commit `proactive-heartbeats/vX.Y.Z` and create the GitHub release from the changelog section.
-4. Put the tag's commit SHA in the release notes, never in the tree — `hermes plugins install --ref` accepts only a 40-character SHA, and a SHA committed to `README.md` or `CHANGELOG.md` pins a release the tree has already moved past.
+1. Land every change through a PR, merged with a merge commit.
+2. A PR that changes operator-visible behavior bumps `version:` in `plugin.yaml` **and** adds the matching `## X.Y.Z — YYYY-MM-DD` section at the top of `CHANGELOG.md`. CI (`scripts/release.py check`) fails unless the plugin version is the newest changelog heading: a section without its bump, or a bump without its section, cannot land.
+3. After the merge, tag the merge commit and push the tag:
 
-`plugin.yaml` `version`, the changelog heading, and the tag must agree. `pyproject.toml` is Ruff config only — it must not carry a product version.
+   ```bash
+   git tag -a proactive-heartbeats/vX.Y.Z -m "proactive-heartbeats X.Y.Z" <merge-sha>
+   git push origin proactive-heartbeats/vX.Y.Z
+   ```
+
+   CI runs the suite on the tagged commit, then the `release` job checks that the tag is annotated, on `main`, and names the `plugin.yaml` version, and publishes the GitHub release: the install SHA, the `hermes plugins install --ref` command, and the changelog section. It is marked Latest only when it is the highest version.
+4. The SHA lives in the release notes, never in the tree — `hermes plugins install --ref` accepts only a 40-character SHA, and a SHA committed to `README.md` or `CHANGELOG.md` pins a release the tree has already moved past.
+
+`pyproject.toml` is Ruff config only — it must not carry a product version.
+
+Tags 0.6.0 to 0.9.0 were cut after the fact, on the merges that wrote their changelog sections: `plugin.yaml` still read `0.5.0` at those commits, which is what the consistency check now refuses.
 
 By contributing, you agree that your contribution is licensed under the repository's MIT license.
